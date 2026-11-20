@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nogrammerly</title>
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <link rel="stylesheet" href="taskpane.css">
+  <script type="module" src="taskpane.js"></script>
+</head>
+<body>
+  <p id="message" role="status" hidden></p>
+  <button id="retry" type="button" hidden>Try again</button>
+
+  <section id="setup" hidden>
+    <h1>Connect to Nogrammerly</h1>
+    <p>This add-in checks your writing with the Nogrammerly app on this PC. Nothing you write leaves the PC.</p>
+    <ol>
+      <li>Click the ✦ icon near the clock.</li>
+      <li>Choose <b>Add-ins for other apps › Let add-ins on this PC use Nogrammerly</b>.</li>
+      <li>Choose <b>Copy add-in key</b> from the same menu, then paste it here.</li>
+    </ol>
+    <label for="key">Add-in key</label>
+    <input id="key" type="password" autocomplete="off" spellcheck="false">
+    <button id="connect" type="button" class="primary">Connect</button>
+  </section>
+
+  <section id="main" hidden>
+    <header>
+      <h1 id="count">Checking…</h1>
+      <p id="ai"></p>
+      <p id="busy" role="status"></p>
+      <p id="no-underlines" hidden>Underlines need Word for Microsoft 365. Every suggestion is still listed here.</p>
+    </header>
+
+    <div class="row">
+      <select id="tone" aria-label="Tone">
+        <option value="professional">Professional</option>
+        <option value="friendly">Friendly</option>
+        <option value="confident">Confident</option>
+        <option value="concise">Concise</option>
+      </select>
+      <button id="rewrite" type="button">Rewrite selection</button>
+    </div>
+
+    <div id="preview" hidden>
+      <p id="preview-text"></p>
+      <p id="preview-note"></p>
+      <div class="actions">
+        <button id="preview-replace" type="button" class="primary">Replace</button>
+        <button id="preview-cancel" type="button">Cancel</button>
+      </div>
+    </div>
+
+    <ul id="issues"></ul>
+
+    <footer>
+      <button id="recheck" type="button">Check again</button>
+      <button id="change-key" type="button">Change key</button>
+    </footer>
+  </section>
+</body>
+</html>

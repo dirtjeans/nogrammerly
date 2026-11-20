@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Tells Word where the add-in lives. It points at https://localhost:3000, which "npm start" serves.
+  To host the files elsewhere, replace that address throughout, and add the new address to "origins"
+  in %LOCALAPPDATA%\Nogrammerly\bridge.json so the Nogrammerly app accepts it.
+-->
+<OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+           xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
+           xsi:type="TaskPaneApp">
+  <Id>6f0c1f0e-6b1c-4f6e-9a57-2f1d5b7c8e41</Id>
+  <Version>0.1.0.0</Version>
+  <ProviderName>Nogrammerly (open source)</ProviderName>
+  <DefaultLocale>en-US</DefaultLocale>
+  <DisplayName DefaultValue="Nogrammerly"/>
+  <Description DefaultValue="Private, on-device writing help. Checks your document with the Nogrammerly app on this PC."/>
+  <IconUrl DefaultValue="https://localhost:3000/assets/icon-32.png"/>
+  <HighResolutionIconUrl DefaultValue="https://localhost:3000/assets/icon-64.png"/>
+  <SupportUrl DefaultValue="https://github.com/gaurabh-pei/nogrammerly"/>
+  <AppDomains>
+    <AppDomain>https://localhost:3000</AppDomain>
+  </AppDomains>
+  <Hosts>
+    <Host Name="Document"/>
+  </Hosts>
+  <Requirements>
+    <Sets DefaultMinVersion="1.1">
+      <!-- 1.6 gives paragraphs a lasting id and tells the add-in when one changes. Underlines need 1.8 and are optional. -->
+      <Set Name="WordApi" MinVersion="1.6"/>
+    </Sets>
+  </Requirements>
+  <DefaultSettings>
+    <SourceLocation DefaultValue="https://localhost:3000/src/taskpane.html"/>
+  </DefaultSettings>
+  <Permissions>ReadWriteDocument</Permissions>
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Hosts>
+      <Host xsi:type="Document">
+        <DesktopFormFactor>
+          <GetStarted>
+            <Title resid="Nog.Start.Title"/>
+            <Description resid="Nog.Start.Description"/>
+            <LearnMoreUrl resid="Nog.Support.Url"/>
+          </GetStarted>
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <OfficeTab id="TabHome">
+              <Group id="Nog.Group">
+                <Label resid="Nog.Brand"/>
+                <Icon>
+                  <bt:Image size="16" resid="Nog.Icon16"/>
+                  <bt:Image size="32" resid="Nog.Icon32"/>
+                  <bt:Image size="80" resid="Nog.Icon80"/>
+                </Icon>
+                <Control xsi:type="Button" id="Nog.Open">
+                  <Label resid="Nog.Brand"/>
+                  <Supertip>
+                    <Title resid="Nog.Brand"/>
+                    <Description resid="Nog.Open.Tip"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Nog.Icon16"/>
+                    <bt:Image size="32" resid="Nog.Icon32"/>
+                    <bt:Image size="80" resid="Nog.Icon80"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>Nog.Pane</TaskpaneId>
+                    <SourceLocation resid="Nog.Pane.Url"/>
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+    <Resources>
+      <bt:Images>
+        <bt:Image id="Nog.Icon16" DefaultValue="https://localhost:3000/assets/icon-16.png"/>
+        <bt:Image id="Nog.Icon32" DefaultValue="https://localhost:3000/assets/icon-32.png"/>
+        <bt:Image id="Nog.Icon80" DefaultValue="https://localhost:3000/assets/icon-80.png"/>
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="Nog.Pane.Url" DefaultValue="https://localhost:3000/src/taskpane.html"/>
+        <bt:Url id="Nog.Support.Url" DefaultValue="https://github.com/gaurabh-pei/nogrammerly"/>
+      </bt:Urls>
+      <!-- The Nog.<kind>.Title and .Subtitle strings appear in the pop-up on an underline; core.js picks them by kind. -->
+      <bt:ShortStrings>
+        <bt:String id="Nog.Brand" DefaultValue="Nogrammerly"/>
+        <bt:String id="Nog.Start.Title" DefaultValue="Nogrammerly is ready"/>
+        <bt:String id="Nog.correctness.Title" DefaultValue="Correctness"/>
+        <bt:String id="Nog.correctness.Subtitle" DefaultValue="Spelling, grammar or punctuation"/>
+        <bt:String id="Nog.clarity.Title" DefaultValue="Clarity"/>
+        <bt:String id="Nog.clarity.Subtitle" DefaultValue="Simpler, clearer wording"/>
+        <bt:String id="Nog.delivery.Title" DefaultValue="Delivery"/>
+        <bt:String id="Nog.delivery.Subtitle" DefaultValue="Tone that fits your reader"/>
+        <bt:String id="Nog.style.Title" DefaultValue="Style"/>
+        <bt:String id="Nog.style.Subtitle" DefaultValue="Stronger word choice"/>
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="Nog.Start.Description" DefaultValue="Choose Nogrammerly on the Home tab to check this document on your PC."/>
+        <bt:String id="Nog.Open.Tip" DefaultValue="Check this document for spelling, grammar, clarity and style. Nothing leaves your PC."/>
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>
