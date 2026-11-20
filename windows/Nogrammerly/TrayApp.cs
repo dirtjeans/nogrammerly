@@ -12,7 +12,12 @@ namespace Nogrammerly;
 internal sealed class TrayApp : ApplicationContext
 {
     private readonly SynchronizationContext ui = SynchronizationContext.Current!;
-    private readonly SystemWritingAssistant assistant = new();
+    private static readonly string DataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Nogrammerly");
+    private static readonly string BridgeFile = Path.Combine(DataFolder, "bridge.json");
+    private readonly IgnoreList ignored = new(Path.Combine(DataFolder, "ignored.json"));
+    private readonly SystemWritingAssistant assistant;
+    private BridgeSettings bridgeSettings = BridgeSettings.Load(BridgeFile);
+    private LocalBridge? bridge;
     private readonly NotifyIcon tray = new();
     private readonly UnderlineOverlay overlay = new();
     private readonly FieldButton fieldButton;
@@ -24,6 +29,7 @@ internal sealed class TrayApp : ApplicationContext
 
     public TrayApp(bool firstRun)
     {
+        assistant = new SystemWritingAssistant(ignored);
         fieldButton = new FieldButton(() => ShowMenu(BuildFieldMenu()));
         tray.Icon = Icon.ExtractAssociatedIcon(Environment.ProcessPath!) ?? SystemIcons.Application;
         tray.Text = "Nogrammerly";
@@ -40,7 +46,38 @@ internal sealed class TrayApp : ApplicationContext
         hook = SetWindowsHookEx(WH_MOUSE_LL, hookProc, GetModuleHandle(null), 0);
 
         _ = AIWriter.PrewarmAsync();
+        if (bridgeSettings.Enabled) StartBridge();
         if (firstRun) Welcome();
+    }
+
+    // The bridge for add-ins in other apps. Off until the user turns it on, because it opens a port on this PC.
+
+    private void StartBridge()
+    {
+        bridge = LocalBridge.ForApp(bridgeSettings, ignored);
+        if (bridge.Start()) return;
+        bridge.Dispose();
+        bridge = null;
+        tray.ShowBalloonTip(4000, "Nogrammerly", $"The add-in bridge couldn't start. Port {bridgeSettings.Port} may be in use.", ToolTipIcon.None);
+    }
+
+    private void SetBridgeEnabled(bool enabled)
+    {
+        bridge?.Dispose();
+        bridge = null;
+        bridgeSettings = bridgeSettings with { Enabled = enabled };
+        try { bridgeSettings.Save(BridgeFile); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+        if (enabled) StartBridge();
+    }
+
+    private void AddBridgeItems(ToolStripItemCollection items)
+    {
+        var menu = new ToolStripMenuItem("Add-ins for other apps");
+        menu.DropDownItems.Add(new ToolStripMenuItem("Let add-ins on this PC use Nogrammerly", null, (_, _) => SetBridgeEnabled(bridge is null)) { Checked = bridge is not null });
+        if (bridge is not null)
+            menu.DropDownItems.Add("Copy add-in key", null, (_, _) => Clipboard.SetText(bridgeSettings.PairingKey));
+        items.Add(menu);
     }
 
     private void Render(FieldState newState)
@@ -116,6 +153,7 @@ internal sealed class TrayApp : ApplicationContext
         }
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(assistant.IsRunning ? "Pause" : "Resume", null, (_, _) => { assistant.SetRunning(!assistant.IsRunning); Render(FieldState.None); });
+        AddBridgeItems(menu.Items);
         menu.Items.Add("How to use…", null, (_, _) => Welcome());
         menu.Items.Add("Quit Nogrammerly", null, (_, _) => ExitThread());
     }
@@ -217,6 +255,7 @@ internal sealed class TrayApp : ApplicationContext
     protected override void ExitThreadCore()
     {
         if (hook != IntPtr.Zero) UnhookWindowsHookEx(hook);
+        bridge?.Dispose();
         tray.Visible = false;
         tray.Dispose();
         assistant.Dispose();

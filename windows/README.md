@@ -61,6 +61,25 @@ Password fields are never read. Fixes are only typed while the app you're writin
 - **"Install with Install.cmd for on-device AI" in the ✦ menu.** Turn on Developer Mode, then run **Install.cmd** again.
 - **"On-device AI needs a Copilot+ PC".** This PC has no supported NPU. The spelling and style checks still work.
 
+## Add-ins for other apps (the bridge)
+
+An add-in inside another app, such as Word, can't run the on-device AI itself. Windows only gives it to the installed Nogrammerly app. The bridge lets an add-in send text to Nogrammerly on the same PC and get issues back.
+
+The first add-in is [Nogrammerly for Word](../word/README.md).
+
+The bridge is off by default. To turn it on, click the ✦ icon, then **Add-ins for other apps › Let add-ins on this PC use Nogrammerly**. Then choose **Copy add-in key** and paste the key into the add-in. The key has the form `port.token`.
+
+The bridge listens on `http://127.0.0.1:47613` only, so other machines can't reach it. Every request needs the header `Authorization: Bearer <token>`. A request from a web page must also come from an origin listed in `%LOCALAPPDATA%\Nogrammerly\bridge.json`. The port is set in the same file.
+
+| Request | Body | Reply |
+|---|---|---|
+| `GET /status` | none | `{"version", "ai"}` |
+| `POST /check` | `{"paragraphs": ["…"], "ai": true}` | `{"paragraphs": [[issue, …], …]}`, one list per paragraph |
+| `POST /rewrite` | `{"text": "…", "tone": "professional"}` | `{"text", "ai"}` |
+| `POST /ignore` | `{"ignoreKey": "…"}` | `{}` |
+
+An issue is `{"start", "length", "kind", "title", "explanation", "original", "replacement", "isSpelling", "ignoreKey"}`. `start` and `length` count UTF-16 code units within the paragraph, the same way JavaScript strings do. Set `"ai": false` for a fast pass with only the spelling and style rules.
+
 ## Uninstall
 
 Double-click **Uninstall.cmd** in the extracted folder. Or run `Install.ps1 -Uninstall` from `%LOCALAPPDATA%\Programs\Nogrammerly`.
