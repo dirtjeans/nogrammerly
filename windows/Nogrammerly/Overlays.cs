@@ -162,8 +162,10 @@ internal sealed class FieldButton : FloatingWindow
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { } // Remembered until the app quits.
     }
 
-    /// <summary>Room around the circle for its shadow.</summary>
-    private int Pad => Math.Max(4, size / 3);
+    /// <summary>Room around the circle for its shadow, which reaches furthest below it.</summary>
+    private int Pad => PadFor(size);
+
+    internal static int PadFor(int size) => (int)Math.Ceiling(size * 0.5);
 
     private Point WindowSpot(Point circle) => new(circle.X - Pad, circle.Y - Pad);
 
@@ -203,6 +205,11 @@ internal sealed class FieldButton : FloatingWindow
         if (SetLayeredBitmap(Handle, bitmap, Location)) drawn = (size, issues);
     }
 
+    /// <summary>
+    /// The button as a picture. Depth comes from three things that mimic light falling from above:
+    /// a wide, soft shadow pushed down below the circle (how high it floats), a short dark one hugging its
+    /// lower edge (where it meets the page), and a face that is lighter at the top than at the bottom.
+    /// </summary>
     internal static Bitmap Render(int size, int pad, int issues)
     {
         var side = size + 2 * pad;
@@ -210,25 +217,57 @@ internal sealed class FieldButton : FloatingWindow
         using (var g = Graphics.FromImage(bitmap))
         {
             g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
             // Grey-scale smoothing: ClearType's coloured fringes don't survive a transparent background.
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
-            // The shadow is a stack of faint discs, each a pixel larger, sitting slightly below the circle.
-            // Where they overlap they add up, so it is darkest at the circle's edge and fades outwards.
-            var drop = Math.Max(1, size / 13);
-            // Tight but clear: it reaches only an eighth of the circle's width, and is dark enough to see.
-            var spread = Math.Clamp(size / 8, 2, pad - drop);
-            using (var shade = new SolidBrush(Color.FromArgb(110 / spread, 0, 0, 0)))
-            {
-                for (var i = spread; i >= 1; i--) g.FillEllipse(shade, pad - i, pad - i + drop, size + 2 * i - 1, size + 2 * i - 1);
-            }
-            using var fill = new SolidBrush(issues == 0 ? Theme.Green : Theme.Red);
-            g.FillEllipse(fill, pad, pad, size - 1, size - 1);
+            var centre = pad + size / 2f;
+            var radius = size / 2f;
+
+            // Wide and soft: a little narrower than the circle, so it shows below it rather than all round.
+            var blur = size * 0.30f;
+            Shadow(g, centre, centre + size * 0.19f, radius - blur * 0.30f, blur, 0.42f);
+            // Short and dark, just under the lower edge.
+            Shadow(g, centre, centre + size * 0.06f, radius - size * 0.02f, size * 0.10f, 0.45f);
+
+            var colour = issues == 0 ? Theme.Green : Theme.Red;
+            var face = new RectangleF(pad, pad, size, size);
+            using (var fill = new LinearGradientBrush(new RectangleF(pad, pad - 1, size, size + 2), Shade(colour, 0.16f), Shade(colour, -0.12f), LinearGradientMode.Vertical))
+                g.FillEllipse(fill, face);
+            // A thin bright rim along the top edge, where the light catches it.
+            using (var rim = new Pen(Color.FromArgb(70, 255, 255, 255), Math.Max(1f, size / 26f)))
+                g.DrawArc(rim, RectangleF.Inflate(face, -rim.Width / 2, -rim.Width / 2), 200, 140);
+
             var label = issues == 0 ? "✦" : Math.Min(issues, 99).ToString();
             using var font = new Font("Segoe UI", size * (issues == 0 ? 0.42f : 0.38f), FontStyle.Bold, GraphicsUnit.Pixel);
             using var centred = new StringFormat(StringFormat.GenericTypographic) { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-            g.DrawString(label, font, Brushes.White, new RectangleF(pad, pad, size, size), centred);
+            g.DrawString(label, font, Brushes.White, face, centred);
         }
         return bitmap;
+    }
+
+    /// <summary>
+    /// A blurred black disc: full strength (<paramref name="strength"/>, 0 to 1) out to <paramref name="core"/>,
+    /// then fading over <paramref name="blur"/> pixels. It is built from rings whose strengths add up to a curve
+    /// that eases out, like a real soft shadow, rather than a straight ramp.
+    /// </summary>
+    private static void Shadow(Graphics g, float x, float y, float core, float blur, float strength)
+    {
+        var rings = Math.Max(2, (int)Math.Ceiling(blur * 2));
+        for (var i = rings; i >= 1; i--)
+        {
+            static float Curve(float t) => (1 - t) * (1 - t);
+            var alpha = 255 * strength * (Curve((i - 1f) / rings) - Curve((float)i / rings));
+            var r = core + blur * i / rings;
+            using var ring = new SolidBrush(Color.FromArgb((int)Math.Round(Math.Clamp(alpha, 0, 255)), 0, 0, 0));
+            if (ring.Color.A > 0) g.FillEllipse(ring, x - r, y - r, 2 * r, 2 * r);
+        }
+    }
+
+    /// <summary>Lighter (positive) or darker (negative) by a fraction.</summary>
+    private static Color Shade(Color colour, float amount)
+    {
+        int Mix(int channel) => (int)Math.Clamp(amount >= 0 ? channel + (255 - channel) * amount : channel * (1 + amount), 0, 255);
+        return Color.FromArgb(Mix(colour.R), Mix(colour.G), Mix(colour.B));
     }
 }
 
