@@ -215,8 +215,9 @@ internal sealed class FieldButton : FloatingWindow
             // The shadow is a stack of faint discs, each a pixel larger, sitting slightly below the circle.
             // Where they overlap they add up, so it is darkest at the circle's edge and fades outwards.
             var drop = Math.Max(1, size / 13);
-            var spread = pad - drop;
-            using (var shade = new SolidBrush(Color.FromArgb(Math.Max(2, 26 / spread), 0, 0, 0)))
+            // Tight but clear: it reaches only an eighth of the circle's width, and is dark enough to see.
+            var spread = Math.Clamp(size / 8, 2, pad - drop);
+            using (var shade = new SolidBrush(Color.FromArgb(110 / spread, 0, 0, 0)))
             {
                 for (var i = spread; i >= 1; i--) g.FillEllipse(shade, pad - i, pad - i + drop, size + 2 * i - 1, size + 2 * i - 1);
             }
