@@ -48,6 +48,7 @@ The ✦ menu shows whether the AI is on. Without Developer Mode, or on a PC that
   - see every suggestion;
   - rewrite your selection;
   - rewrite the whole text.
+- **Drag the round button** if it is in your way. It remembers where you put it, and it steps aside when the text cursor comes close. To undo the move, click the ✦ icon and choose **Put the round button back in the corner**.
 - **Click the ✦ icon** to:
   - pause Nogrammerly;
   - check whether the AI is on;
@@ -65,7 +66,7 @@ Password fields are never read. Fixes are only typed while the app you're writin
 
 An add-in inside another app, such as Word, can't run the on-device AI itself. Windows only gives it to the installed Nogrammerly app. The bridge lets an add-in send text to Nogrammerly on the same PC and get issues back.
 
-The first add-in is [Nogrammerly for Word](../word/README.md).
+The first add-in is [Nogrammerly for Word](../word/README.md). To use it, choose **Add-ins for other apps › Set up Word add-in…** from the ✦ menu. The app then serves the add-in to Word itself, on `https://localhost:47614`, and turns the bridge on for you.
 
 The bridge is off by default. To turn it on, click the ✦ icon, then **Add-ins for other apps › Let add-ins on this PC use Nogrammerly**. Then choose **Copy add-in key** and paste the key into the add-in. The key has the form `port.token`.
 

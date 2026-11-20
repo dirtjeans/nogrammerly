@@ -89,48 +89,145 @@ internal sealed class UnderlineOverlay : FloatingWindow
     }
 }
 
-/// <summary>Grammarly-style round button pinned to the bottom-right corner of the field being edited.</summary>
+/// <summary>
+/// Grammarly-style round button in the bottom-right corner of the field being edited. The user can drag it
+/// somewhere else in the field; it remembers that place, and it steps aside when the text cursor comes close.
+/// The window is a little larger than the circle, to leave room for its soft shadow. It is drawn with
+/// per-pixel transparency, so the shadow blends with whatever is behind it and clear pixels let clicks through.
+/// </summary>
 internal sealed class FieldButton : FloatingWindow
 {
     private const int BaseSize = 26;
+    private readonly string? savePath;
     private int issues;
+    private int size = BaseSize;
+    private (int Size, int Issues) drawn;
+    private Point offset;
+    private Rectangle field;
+    private Rectangle screen;
+    private int dpi = 96;
+    private Point pressedAt;
+    private Point windowAt;
+    private bool pressed;
+    private bool dragging;
 
-    public FieldButton(Action onClick)
+    /// <param name="savePath">File that remembers where the user dragged the button; null to not remember.</param>
+    public FieldButton(Action onClick, string? savePath = null)
     {
+        this.savePath = savePath;
+        try { if (savePath is not null && File.Exists(savePath)) offset = ButtonPlacement.Parse(File.ReadAllText(savePath)); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
         Cursor = Cursors.Hand;
-        MouseUp += (_, e) => { if (e.Button == MouseButtons.Left) onClick(); };
-        var tip = new ToolTip();
-        tip.SetToolTip(this, "Nogrammerly: suggestions and rewrites");
-    }
-
-    /// <summary><paramref name="field"/> is in physical screen pixels.</summary>
-    public void ShowFor(Rectangle field, int issueCount)
-    {
-        var dpi = GetDpiForWindow(GetForegroundWindow());
-        var size = BaseSize * (int)(dpi == 0 ? 96 : dpi) / 96;
-        var screen = Screen.FromRectangle(field).WorkingArea;
-        var x = Math.Clamp(field.Right - size - size / 4, screen.Left, screen.Right - size);
-        var y = Math.Clamp(field.Bottom - size - size / 4, screen.Top, screen.Bottom - size);
-        if (issueCount != issues || Width != size) { issues = issueCount; Invalidate(); }
-        if (Width != size)
+        MouseDown += (_, e) =>
         {
-            using var path = new GraphicsPath();
-            path.AddEllipse(0, 0, size, size);
-            Region = new Region(path);
-        }
-        ShowAt(new Rectangle(x, y, size, size));
+            if (e.Button != MouseButtons.Left) return;
+            pressed = true; pressedAt = Cursor.Position; windowAt = Location;
+        };
+        MouseMove += (_, _) =>
+        {
+            if (!pressed) return;
+            var now = Cursor.Position;
+            // A small wobble while clicking is still a click.
+            var slack = SystemInformation.DragSize;
+            if (!dragging && Math.Abs(now.X - pressedAt.X) <= slack.Width && Math.Abs(now.Y - pressedAt.Y) <= slack.Height) return;
+            dragging = true;
+            Location = new Point(windowAt.X + now.X - pressedAt.X, windowAt.Y + now.Y - pressedAt.Y);
+        };
+        MouseUp += (_, e) =>
+        {
+            if (e.Button != MouseButtons.Left || !pressed) return;
+            pressed = false;
+            if (!dragging) { onClick(); return; }
+            dragging = false;
+            MoveTo(ButtonPlacement.OffsetFor(field, screen, size, new Point(Left + Pad, Top + Pad), dpi));
+        };
+        var tip = new ToolTip();
+        tip.SetToolTip(this, "Nogrammerly: suggestions and rewrites. Drag to move.");
     }
 
-    protected override void OnPaint(PaintEventArgs e)
+    public bool IsMoved => offset != Point.Empty;
+
+    public void ResetPosition() => MoveTo(Point.Empty);
+
+    private void MoveTo(Point newOffset)
     {
-        var g = e.Graphics;
-        g.SmoothingMode = SmoothingMode.AntiAlias;
-        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
-        using var fill = new SolidBrush(issues == 0 ? Theme.Green : Theme.Red);
-        g.FillEllipse(fill, 0, 0, Width - 1, Height - 1);
-        var label = issues == 0 ? "✦" : Math.Min(issues, 99).ToString();
-        using var font = new Font("Segoe UI", Height * (issues == 0 ? 0.42f : 0.38f), FontStyle.Bold, GraphicsUnit.Pixel);
-        TextRenderer.DrawText(g, label, font, ClientRectangle, Color.White, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+        offset = newOffset;
+        if (Visible) Location = WindowSpot(ButtonPlacement.Place(field, screen, size, offset, dpi));
+        if (savePath is null) return;
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(savePath)!);
+            File.WriteAllText(savePath, ButtonPlacement.Format(offset));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { } // Remembered until the app quits.
+    }
+
+    /// <summary>Room around the circle for its shadow.</summary>
+    private int Pad => Math.Max(4, size / 3);
+
+    private Point WindowSpot(Point circle) => new(circle.X - Pad, circle.Y - Pad);
+
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            var cp = base.CreateParams;
+            cp.ExStyle |= WS_EX_LAYERED;
+            return cp;
+        }
+    }
+
+    /// <summary><paramref name="fieldFrame"/> and <paramref name="caret"/> are in physical screen pixels.</summary>
+    public void ShowFor(Rectangle fieldFrame, int issueCount, Rectangle? caret = null)
+    {
+        issues = issueCount;
+        // While the user is dragging, the button goes where the mouse goes.
+        if (!pressed)
+        {
+            var windowDpi = GetDpiForWindow(GetForegroundWindow());
+            dpi = windowDpi == 0 ? 96 : (int)windowDpi;
+            size = BaseSize * dpi / 96;
+            field = fieldFrame;
+            screen = Screen.FromRectangle(field).WorkingArea;
+            var side = size + 2 * Pad;
+            ShowAt(new Rectangle(WindowSpot(ButtonPlacement.Place(field, screen, size, offset, dpi, caret)), new Size(side, side)));
+        }
+        if (drawn != (size, issues)) Draw();
+    }
+
+    /// <summary>Paints the shadow, circle and label, and hands the picture to Windows with its transparency.</summary>
+    private void Draw()
+    {
+        if (!IsHandleCreated) return;
+        using var bitmap = Render(size, Pad, issues);
+        if (SetLayeredBitmap(Handle, bitmap, Location)) drawn = (size, issues);
+    }
+
+    internal static Bitmap Render(int size, int pad, int issues)
+    {
+        var side = size + 2 * pad;
+        var bitmap = new Bitmap(side, side, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+        using (var g = Graphics.FromImage(bitmap))
+        {
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            // Grey-scale smoothing: ClearType's coloured fringes don't survive a transparent background.
+            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+            // The shadow is a stack of faint discs, each a pixel larger, sitting slightly below the circle.
+            // Where they overlap they add up, so it is darkest at the circle's edge and fades outwards.
+            var drop = Math.Max(1, size / 13);
+            var spread = pad - drop;
+            using (var shade = new SolidBrush(Color.FromArgb(Math.Max(2, 26 / spread), 0, 0, 0)))
+            {
+                for (var i = spread; i >= 1; i--) g.FillEllipse(shade, pad - i, pad - i + drop, size + 2 * i - 1, size + 2 * i - 1);
+            }
+            using var fill = new SolidBrush(issues == 0 ? Theme.Green : Theme.Red);
+            g.FillEllipse(fill, pad, pad, size - 1, size - 1);
+            var label = issues == 0 ? "✦" : Math.Min(issues, 99).ToString();
+            using var font = new Font("Segoe UI", size * (issues == 0 ? 0.42f : 0.38f), FontStyle.Bold, GraphicsUnit.Pixel);
+            using var centred = new StringFormat(StringFormat.GenericTypographic) { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+            g.DrawString(label, font, Brushes.White, new RectangleF(pad, pad, size, size), centred);
+        }
+        return bitmap;
     }
 }
 

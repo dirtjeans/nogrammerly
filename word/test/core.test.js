@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { BridgeClient, BridgeError, MAX_PARAGRAPHS, batches, changedParagraphs, collector, occurrenceIndex, parseKey, searchText, stillApplies, toCritiques } from "../src/core.js";
+import { BridgeClient, BridgeError, MAX_PARAGRAPHS, batches, changedParagraphs, collector, hostKey, occurrenceIndex, parseKey, searchText, stillApplies, toCritiques } from "../src/core.js";
 
 const token = "ab".repeat(32);
 const issue = (start, original, replacement, kind = "correctness") => ({ start, length: original.length, original, replacement, kind });
@@ -8,6 +8,15 @@ const issue = (start, original, replacement, kind = "correctness") => ({ start, 
 test("parseKey reads the key from the tray menu and refuses anything else", () => {
   assert.deepEqual(parseKey(` 47613.${token}\n`), { port: 47613, token });
   for (const bad of ["", null, token, `80.${token}`, `99999.${token}`, "47613.short", `47613.${token}!`]) assert.equal(parseKey(bad), null);
+});
+
+test("hostKey takes a key from the app's own site and nothing else", async () => {
+  const key = `47613.${token}`;
+  assert.equal(await hostKey(async (url) => (assert.equal(url, "/key.json"), Response.json({ key }))), key);
+  assert.equal(await hostKey(async () => new Response("<html>", { status: 404 })), null);
+  assert.equal(await hostKey(async () => new Response("<html>not json</html>")), null);
+  assert.equal(await hostKey(async () => Response.json({ key: "nope" })), null);
+  assert.equal(await hostKey(async () => { throw new TypeError("Failed to fetch"); }), null);
 });
 
 test("the client sends the key and paragraphs to 127.0.0.1 only", async () => {

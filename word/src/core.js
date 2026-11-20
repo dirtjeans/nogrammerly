@@ -16,6 +16,21 @@ export function parseKey(key) {
   return port > 1023 && port < 65536 ? { port, token: match[2] } : null;
 }
 
+/**
+ * When the Nogrammerly app itself serves this add-in, it hands the page the key, so there is nothing to paste.
+ * Anywhere else (a developer's server, another web host) there is no such address and this gives null.
+ */
+export async function hostKey(fetchImpl = globalThis.fetch.bind(globalThis)) {
+  try {
+    const response = await fetchImpl("/key.json", { cache: "no-store" });
+    if (!response.ok) return null;
+    const key = (await response.json())?.key;
+    return parseKey(key) ? key : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Why a bridge call failed: "offline", "key", "origin" or "error". */
 export class BridgeError extends Error {
   constructor(reason, message) {

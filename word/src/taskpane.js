@@ -2,7 +2,7 @@
 // underlines what comes back, and lists every issue with its fix. See core.js for the parts
 // that don't need Word.
 /* global Office, Word */
-import { BridgeClient, BridgeError, changedParagraphs, collector, occurrenceIndex, parseKey, searchText, stillApplies, toCritiques } from "./core.js";
+import { BridgeClient, BridgeError, changedParagraphs, collector, hostKey, occurrenceIndex, parseKey, searchText, stillApplies, toCritiques } from "./core.js";
 
 const KEY_STORE = "nogrammerly.key";
 /** The on-device model takes seconds per paragraph, so its pass goes a few paragraphs at a time. */
@@ -29,7 +29,7 @@ const annotated = new Map();
 let queue = Promise.resolve();
 const enqueue = (job) => (queue = queue.then(job).catch(report));
 
-Office.onReady((info) => {
+Office.onReady(async (info) => {
   $("connect").addEventListener("click", () => saveKey($("key").value));
   $("key").addEventListener("keydown", (e) => { if (e.key === "Enter") saveKey($("key").value); });
   $("change-key").addEventListener("click", () => show("setup"));
@@ -38,8 +38,10 @@ Office.onReady((info) => {
   $("retry").addEventListener("click", () => enqueue(connect));
   if (info.host !== Office.HostType.Word) return say("Open this add-in in Word.");
   underlines = Office.context.requirements.isSetSupported("WordApi", "1.8");
-  let saved = null;
-  try { saved = localStorage.getItem(KEY_STORE); } catch { /* Storage is blocked; ask for the key each time. */ }
+  // Served by the Nogrammerly app, the page is given the key. Otherwise use the one the user pasted before.
+  let saved = await hostKey();
+  $("change-key").hidden = saved !== null;
+  try { saved ??= localStorage.getItem(KEY_STORE); } catch { /* Storage is blocked; ask for the key each time. */ }
   if (parseKey(saved)) { client = new BridgeClient(parseKey(saved)); enqueue(connect); }
   else show("setup");
 });

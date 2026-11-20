@@ -33,6 +33,10 @@
 
   <ItemGroup>
     <Content Include="Assets\*.png;Assets\*.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <!-- The Word add-in's pages, which the app serves to Word itself. -->
+    <Content Include="..\..\word\src\*" Link="WordAddin\src\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\word\assets\*" Link="WordAddin\assets\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\word\manifest.xml" Link="WordAddin\manifest.xml" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Package\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Link="%(Filename)%(Extension)" />
   </ItemGroup>
 

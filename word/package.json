@@ -10,6 +10,8 @@
     "certs": "npx --yes office-addin-dev-certs install",
     "start": "node serve.js",
     "sideload": "npx --yes office-addin-debugging start manifest.xml desktop --no-debug --dev-server-port 3000",
-    "unload": "npx --yes office-addin-debugging stop manifest.xml"
+    "unload": "npx --yes office-addin-debugging stop manifest.xml",
+    "hosted": "node hosted.js",
+    "sideload:hosted": "npx --yes office-addin-debugging start manifest.hosted.xml desktop --no-debug"
   }
 }

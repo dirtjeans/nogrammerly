@@ -6,16 +6,31 @@ The add-in does no checking itself. It sends each paragraph to the Nogrammerly a
 
 ## What you need
 
-- Nogrammerly for Windows, running, with the bridge turned on.
+- Nogrammerly for Windows, installed and running.
 - A recent Word for Windows. It must support the WordApi 1.6 requirement set.
-- Node.js 20 or later, to serve the add-in's files to Word.
 
 Underlines in the document need Word for Microsoft 365. Without it, the side pane still lists every issue and can fix each one.
 
 ## Set up
 
-1. Turn on the bridge. Click the ✦ icon near the clock, then choose **Add-ins for other apps › Let add-ins on this PC use Nogrammerly**.
-2. Make a local certificate. Word only loads add-ins over HTTPS. This step adds a certificate for `localhost` to your trusted list, and Windows asks you to confirm it.
+1. Click the ✦ icon near the clock, then choose **Add-ins for other apps › Set up Word add-in…**.
+2. Confirm the certificate when Windows asks.
+3. Close Word if it is open, start it again, and choose **Nogrammerly** on the **Home** tab.
+
+That is all. The Nogrammerly app serves the add-in's pages to Word itself, so nothing else needs to run.
+
+### Why a certificate?
+
+Word only loads add-ins from a secure (HTTPS) address. So the app makes a certificate for the address `localhost` and asks Windows to trust it. The certificate is for your user account on this PC only. It can't be used for any other site, and it can't sign other certificates. Its private key stays in your Windows key store.
+
+To undo all of this, choose **Add-ins for other apps › Remove Word add-in**. Uninstalling Nogrammerly does the same.
+
+## Run it from source instead
+
+Developers can serve the add-in's files with Node.js 20 or later, without the app's help.
+
+1. Turn on the bridge. Click the ✦ icon, then choose **Add-ins for other apps › Let add-ins on this PC use Nogrammerly**.
+2. Make a local certificate. Windows asks you to confirm it.
 
    ```powershell
    npm run certs
@@ -35,7 +50,7 @@ Underlines in the document need Word for Microsoft 365. Without it, the side pan
 
 5. On Word's **Home** tab, choose **Nogrammerly**. In the ✦ menu, choose **Add-ins for other apps › Copy add-in key**, and paste the key into the pane.
 
-To remove the add-in from Word, run `npm run unload`.
+To remove this copy from Word, run `npm run unload`.
 
 ## How to use it
 
@@ -49,11 +64,19 @@ To remove the add-in from Word, run `npm run unload`.
 - Only the main body is checked. Headers, footers, footnotes and text boxes are not.
 - Word's pop-up shows a fix only when there is text to offer. Issues with no fix, or whose fix is to delete a word, are handled in the side pane.
 - A paragraph that holds a picture, a field or a footnote mark may show an underline a little out of place.
-- The key is kept in the add-in's browser storage on this PC.
+- When you run it from source, the key is kept in the add-in's browser storage on this PC.
 
 ## Hosting the files somewhere else
 
-`manifest.xml` points at `https://localhost:3000`. To serve the files from another address, replace that address throughout the manifest. Then add the new address to `"origins"` in `%LOCALAPPDATA%\Nogrammerly\bridge.json`, and turn the bridge off and on again. The Nogrammerly app refuses web pages that are not on that list.
+`manifest.xml` points at `https://localhost:3000`. To serve `src` and `assets` from another HTTPS address, make a manifest for it:
+
+```powershell
+npm run hosted -- https://example.github.io/nogrammerly
+```
+
+This writes `manifest.hosted.xml`. Then add the site, such as `https://example.github.io`, to `"origins"` in `%LOCALAPPDATA%\Nogrammerly\bridge.json` and restart Nogrammerly. The app refuses web pages that are not on that list. Load the new manifest with `npm run sideload:hosted`.
+
+This route is not proven. Some browsers stop a page on the public web from calling a program on your PC, and Word may do the same. If the pane says it can't reach Nogrammerly, go back to the local server.
 
 ## Develop
 

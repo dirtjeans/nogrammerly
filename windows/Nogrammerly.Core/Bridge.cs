@@ -9,9 +9,15 @@ namespace Nogrammerly.Core;
 // the settings, access rules and request handling live here so they can be tested on any machine.
 
 /// <summary>Saved bridge settings. The bridge is off until the user turns it on.</summary>
-public sealed record BridgeSettings(bool Enabled, int Port, string Token, IReadOnlyList<string> Origins)
+public sealed record BridgeSettings(bool Enabled, int Port, string Token, IReadOnlyList<string> Origins, bool WordAddin = false, int AddinPort = 0)
 {
     public const int DefaultPort = 47613;
+
+    /// <summary>The port the app serves the Word add-in's pages on. Settings saved before this existed have none.</summary>
+    public int SitePort => AddinPort is > 1023 and < 65536 ? AddinPort : AddinSite.DefaultPort;
+
+    /// <summary>The web addresses that may call the bridge: the saved list, plus the app's own add-in pages while it serves them.</summary>
+    public IReadOnlyList<string> AllowedOrigins => WordAddin ? [.. Origins, AddinSite.Origin(SitePort)] : Origins;
 
     /// <summary>What the user pastes into the add-in once, so it knows where the bridge is and can prove who it is.</summary>
     public string PairingKey => $"{Port}.{Token}";
@@ -56,7 +62,7 @@ public static class Bridge
     {
         if (!string.Equals(host, $"127.0.0.1:{settings.Port}", StringComparison.Ordinal)) return BridgeAccess.BadHost;
         var preflight = string.Equals(method, "OPTIONS", StringComparison.OrdinalIgnoreCase);
-        if (origin is null ? preflight : !settings.Origins.Contains(origin, StringComparer.OrdinalIgnoreCase)) return BridgeAccess.BadOrigin;
+        if (origin is null ? preflight : !settings.AllowedOrigins.Contains(origin, StringComparer.OrdinalIgnoreCase)) return BridgeAccess.BadOrigin;
         if (preflight) return BridgeAccess.Preflight;
         var expected = Encoding.UTF8.GetBytes("Bearer " + settings.Token);
         var given = Encoding.UTF8.GetBytes(authorization ?? "");

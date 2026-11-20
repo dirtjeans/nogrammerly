@@ -14,10 +14,12 @@ internal sealed class TrayApp : ApplicationContext
     private readonly SynchronizationContext ui = SynchronizationContext.Current!;
     private static readonly string DataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Nogrammerly");
     private static readonly string BridgeFile = Path.Combine(DataFolder, "bridge.json");
+    private static readonly string WordManifest = Path.Combine(DataFolder, "word-addin.xml");
     private readonly IgnoreList ignored = new(Path.Combine(DataFolder, "ignored.json"));
     private readonly SystemWritingAssistant assistant;
     private BridgeSettings bridgeSettings = BridgeSettings.Load(BridgeFile);
     private LocalBridge? bridge;
+    private AddinHost? addinHost;
     private readonly NotifyIcon tray = new();
     private readonly UnderlineOverlay overlay = new();
     private readonly FieldButton fieldButton;
@@ -30,7 +32,7 @@ internal sealed class TrayApp : ApplicationContext
     public TrayApp(bool firstRun)
     {
         assistant = new SystemWritingAssistant(ignored);
-        fieldButton = new FieldButton(() => ShowMenu(BuildFieldMenu()));
+        fieldButton = new FieldButton(() => ShowMenu(BuildFieldMenu()), Path.Combine(DataFolder, "button.txt"));
         tray.Icon = Icon.ExtractAssociatedIcon(Environment.ProcessPath!) ?? SystemIcons.Application;
         tray.Text = "Nogrammerly";
         tray.Visible = true;
@@ -47,6 +49,7 @@ internal sealed class TrayApp : ApplicationContext
 
         _ = AIWriter.PrewarmAsync();
         if (bridgeSettings.Enabled) StartBridge();
+        if (bridgeSettings.WordAddin) StartAddinHost(AddinSetup.FindCertificate());
         if (firstRun) Welcome();
     }
 
@@ -61,19 +64,83 @@ internal sealed class TrayApp : ApplicationContext
         tray.ShowBalloonTip(4000, "Nogrammerly", $"The add-in bridge couldn't start. Port {bridgeSettings.Port} may be in use.", ToolTipIcon.None);
     }
 
-    private void SetBridgeEnabled(bool enabled)
+    private void SetBridgeEnabled(bool enabled) => Apply(bridgeSettings with { Enabled = enabled });
+
+    /// <summary>Saves new settings and restarts the bridge with them.</summary>
+    private void Apply(BridgeSettings settings)
     {
         bridge?.Dispose();
         bridge = null;
-        bridgeSettings = bridgeSettings with { Enabled = enabled };
+        bridgeSettings = settings;
         try { bridgeSettings.Save(BridgeFile); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
-        if (enabled) StartBridge();
+        if (settings.Enabled) StartBridge();
+    }
+
+    // The Word add-in. The app serves the add-in's pages itself, so Word needs nothing else running.
+
+    private void StartAddinHost(System.Security.Cryptography.X509Certificates.X509Certificate2? certificate)
+    {
+        addinHost?.Dispose();
+        addinHost = null;
+        if (certificate is null)
+        {
+            tray.ShowBalloonTip(4000, "Nogrammerly", "The Word add-in's certificate is missing or out of date. Choose Set up Word add-in again.", ToolTipIcon.None);
+            return;
+        }
+        addinHost = new AddinHost(certificate, bridgeSettings.SitePort, AddinSetup.SiteRoot, () => bridgeSettings.PairingKey);
+        if (addinHost.Start()) return;
+        addinHost.Dispose();
+        addinHost = null;
+        tray.ShowBalloonTip(4000, "Nogrammerly", $"The Word add-in couldn't start. Port {bridgeSettings.SitePort} may be in use.", ToolTipIcon.None);
+    }
+
+    private void SetUpWordAddin()
+    {
+        var answer = MessageBox.Show(
+            "Nogrammerly can check your documents inside Word.\n\n" +
+            "Word only loads add-ins from a secure address, so Nogrammerly will make a security certificate for this PC. " +
+            "It is for the address \"localhost\" only and can't be used for any other site. Windows will ask you to confirm it.\n\n" +
+            "Nothing you write leaves this PC.\n\nSet up the Word add-in now?",
+            "Nogrammerly", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+        if (answer != DialogResult.Yes) return;
+        try
+        {
+            var certificate = AddinSetup.FindCertificate() ?? AddinSetup.CreateCertificate();
+            if (certificate is null)
+            {
+                MessageBox.Show("The certificate wasn't added, so the Word add-in was not set up.", "Nogrammerly", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            AddinSetup.RegisterWithWord(bridgeSettings.SitePort, WordManifest);
+            // The add-in talks to the app over the bridge, so that goes on too.
+            Apply(bridgeSettings with { Enabled = true, WordAddin = true });
+            StartAddinHost(certificate);
+            MessageBox.Show("The Word add-in is set up.\n\nClose Word if it is open, then start it again and choose Nogrammerly on the Home tab.",
+                "Nogrammerly", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Security.SecurityException or System.Security.Cryptography.CryptographicException)
+        {
+            MessageBox.Show($"The Word add-in couldn't be set up: {e.Message}", "Nogrammerly", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+    }
+
+    private void RemoveWordAddin()
+    {
+        addinHost?.Dispose();
+        addinHost = null;
+        try { AddinSetup.RemoveFromWord(WordManifest); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Security.SecurityException) { }
+        AddinSetup.RemoveCertificates();
+        Apply(bridgeSettings with { WordAddin = false });
     }
 
     private void AddBridgeItems(ToolStripItemCollection items)
     {
         var menu = new ToolStripMenuItem("Add-ins for other apps");
+        if (bridgeSettings.WordAddin) menu.DropDownItems.Add("Remove Word add-in", null, (_, _) => RemoveWordAddin());
+        else menu.DropDownItems.Add("Set up Word add-in…", null, (_, _) => SetUpWordAddin());
+        menu.DropDownItems.Add(new ToolStripSeparator());
         menu.DropDownItems.Add(new ToolStripMenuItem("Let add-ins on this PC use Nogrammerly", null, (_, _) => SetBridgeEnabled(bridge is null)) { Checked = bridge is not null });
         if (bridge is not null)
             menu.DropDownItems.Add("Copy add-in key", null, (_, _) => Clipboard.SetText(bridgeSettings.PairingKey));
@@ -84,7 +151,7 @@ internal sealed class TrayApp : ApplicationContext
     {
         state = newState;
         overlay.ShowMarks(state.Marks);
-        if (state.Frame is { } frame) fieldButton.ShowFor(frame, state.Suggestions.Count); else fieldButton.Hide();
+        if (state.Frame is { } frame) fieldButton.ShowFor(frame, state.Suggestions.Count, state.Caret); else fieldButton.Hide();
         var count = state.Suggestions.Count;
         tray.Text = !assistant.IsRunning ? "Nogrammerly (paused)" : count == 0 ? "Nogrammerly" : $"Nogrammerly: {count} suggestion{(count == 1 ? "" : "s")}";
     }
@@ -153,6 +220,7 @@ internal sealed class TrayApp : ApplicationContext
         }
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(assistant.IsRunning ? "Pause" : "Resume", null, (_, _) => { assistant.SetRunning(!assistant.IsRunning); Render(FieldState.None); });
+        if (fieldButton.IsMoved) menu.Items.Add("Put the round button back in the corner", null, (_, _) => fieldButton.ResetPosition());
         AddBridgeItems(menu.Items);
         menu.Items.Add("How to use…", null, (_, _) => Welcome());
         menu.Items.Add("Quit Nogrammerly", null, (_, _) => ExitThread());
@@ -256,6 +324,7 @@ internal sealed class TrayApp : ApplicationContext
     {
         if (hook != IntPtr.Zero) UnhookWindowsHookEx(hook);
         bridge?.Dispose();
+        addinHost?.Dispose();
         tray.Visible = false;
         tray.Dispose();
         assistant.Dispose();

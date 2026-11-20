@@ -81,6 +81,24 @@ internal sealed class TextField
         catch (Exception) { return []; }
     }
 
+    /// <summary>The text cursor's rectangle on screen, or null if there is a selection or the app doesn't say.</summary>
+    public Rectangle? Caret()
+    {
+        try
+        {
+            var selection = textPattern?.GetSelection().FirstOrDefault();
+            if (selection is null || selection.GetText(1).Length > 0) return null;
+            // An empty range has no rectangle in most apps, so measure the character after the cursor,
+            // or the one before it at the end of the text.
+            var probe = selection.Clone();
+            if (probe.MoveEndpointByUnit(TextPatternRangeEndpoint.End, TextUnit.Character, 1) == 0)
+                probe.MoveEndpointByUnit(TextPatternRangeEndpoint.Start, TextUnit.Character, -1);
+            var rect = probe.GetBoundingRectangles().FirstOrDefault();
+            return rect is { Width: > 0, Height: > 0 and < 200 } ? rect : null;
+        }
+        catch (Exception) { return null; }
+    }
+
     public bool HasSelectedText()
     {
         try { return textPattern?.GetSelection().FirstOrDefault()?.GetText(1).Length > 0; }

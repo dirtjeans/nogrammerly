@@ -42,6 +42,29 @@ public class BridgeAccessTests
     }
 
     [Fact]
+    public void TheAppsOwnWordAddInPagesAreAllowedOnlyWhileItServesThem()
+    {
+        const string own = "https://localhost:47614";
+        Assert.Equal(BridgeAccess.BadOrigin, Bridge.Check(Settings, "POST", Host, own, Key));
+        Assert.Equal(BridgeAccess.Allowed, Bridge.Check(Settings with { WordAddin = true }, "POST", Host, own, Key));
+        Assert.Equal(BridgeAccess.Allowed, Bridge.Check(Settings with { WordAddin = true, AddinPort = 50000 }, "POST", Host, "https://localhost:50000", Key));
+    }
+
+    [Fact]
+    public void SettingsSavedBeforeTheWordAddInExistedStillLoad()
+    {
+        var path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName(), "bridge.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        try
+        {
+            File.WriteAllText(path, $$"""{"enabled":true,"port":47613,"token":"{{Settings.Token}}","origins":["https://a.example"]}""");
+            var loaded = BridgeSettings.Load(path);
+            Assert.Equal((true, false, 47614, Settings.Token), (loaded.Enabled, loaded.WordAddin, loaded.SitePort, loaded.Token));
+        }
+        finally { Directory.Delete(Path.GetDirectoryName(path)!, true); }
+    }
+
+    [Fact]
     public void SettingsSurviveSavingAndStartOff()
     {
         var path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName(), "bridge.json");

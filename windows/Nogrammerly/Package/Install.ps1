@@ -27,6 +27,18 @@ function New-Shortcut($path) {
 
 if ($Uninstall) {
     Remove-Nogrammerly
+    # Undo "Set up Word add-in": take the add-in out of Word and remove its certificate.
+    # Windows asks before it removes a certificate from the trusted list.
+    $wordKey = 'HKCU:\Software\Microsoft\Office\16.0\WEF\Developer'
+    $addinId = '6f0c1f0e-6b1c-4f6e-9a57-2f1d5b7c8e41'
+    $manifest = Join-Path $env:LOCALAPPDATA 'Nogrammerly\word-addin.xml'
+    if ((Get-ItemProperty $wordKey -ErrorAction SilentlyContinue).$addinId -eq $manifest) {
+        Remove-ItemProperty $wordKey -Name $addinId -ErrorAction SilentlyContinue
+    }
+    Remove-Item $manifest -ErrorAction SilentlyContinue
+    Get-ChildItem Cert:\CurrentUser\My, Cert:\CurrentUser\Root |
+        Where-Object { $_.FriendlyName -eq 'Nogrammerly add-in (this PC only)' } |
+        Remove-Item -ErrorAction SilentlyContinue
     Write-Host 'Nogrammerly has been removed.'
     exit
 }

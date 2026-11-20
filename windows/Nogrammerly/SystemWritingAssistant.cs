@@ -10,7 +10,7 @@ namespace Nogrammerly;
 internal sealed record Mark(WritingSuggestion Suggestion, Rectangle[] Rects);
 
 /// <summary>What the UI shows for the focused field. Immutable, so it can cross from the worker thread to the UI thread.</summary>
-internal sealed record FieldState(IReadOnlyList<WritingSuggestion> Suggestions, IReadOnlyList<Mark> Marks, Rectangle? Frame, bool HasSelection)
+internal sealed record FieldState(IReadOnlyList<WritingSuggestion> Suggestions, IReadOnlyList<Mark> Marks, Rectangle? Frame, bool HasSelection, Rectangle? Caret = null)
 {
     public static readonly FieldState None = new([], [], null, false);
     public bool IsActive => Frame is not null;
@@ -172,7 +172,7 @@ internal sealed class SystemWritingAssistant : IDisposable
                 if (rects.Length > 0) marks.Add(new Mark(suggestion, rects));
             }
         }
-        Post(new FieldState(current, marks, frame, field.HasSelectedText()));
+        Post(new FieldState(current, marks, frame, field.HasSelectedText(), field.Caret()));
     }
 
     private void Reset()
