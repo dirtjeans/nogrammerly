@@ -6,10 +6,10 @@ using Nogrammerly.Core;
 
 namespace Nogrammerly;
 
-/// <summary>An issue drawn on screen: one rectangle per line it covers, in physical screen pixels.</summary>
 /// <summary>An app the user has typed in: its program name (which exclusions go by) and a name to show.</summary>
 internal sealed record AppInfo(string Key, string Name);
 
+/// <summary>An issue drawn on screen: one rectangle per line it covers, in physical screen pixels.</summary>
 internal sealed record Mark(WritingSuggestion Suggestion, Rectangle[] Rects);
 
 /// <summary>What the UI shows for the focused field. Immutable, so it can cross from the worker thread to the UI thread.</summary>

@@ -25,17 +25,6 @@ jobs:
       working-directory: windows
       run: dotnet test --project Nogrammerly.Tests
 
-  word:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v5
-    - uses: actions/setup-node@v5
-      with:
-        node-version: 22
-    - name: Test the Word add-in
-      working-directory: word
-      run: npm test
-
   package:
     runs-on: windows-latest
     strategy:

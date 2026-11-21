@@ -27,18 +27,6 @@ function New-Shortcut($path) {
 
 if ($Uninstall) {
     Remove-Nogrammerly
-    # Undo "Set up Word add-in": take the add-in out of Word and remove its certificate.
-    # Windows asks before it removes a certificate from the trusted list.
-    $wordKey = 'HKCU:\Software\Microsoft\Office\16.0\WEF\Developer'
-    $addinId = '6f0c1f0e-6b1c-4f6e-9a57-2f1d5b7c8e41'
-    $manifest = Join-Path $env:LOCALAPPDATA 'Nogrammerly\word-addin.xml'
-    if ((Get-ItemProperty $wordKey -ErrorAction SilentlyContinue).$addinId -eq $manifest) {
-        Remove-ItemProperty $wordKey -Name $addinId -ErrorAction SilentlyContinue
-    }
-    Remove-Item $manifest -ErrorAction SilentlyContinue
-    Get-ChildItem Cert:\CurrentUser\My, Cert:\CurrentUser\Root |
-        Where-Object { $_.FriendlyName -eq 'Nogrammerly add-in (this PC only)' } |
-        Remove-Item -ErrorAction SilentlyContinue
     Write-Host 'Nogrammerly has been removed.'
     exit
 }
@@ -49,20 +37,6 @@ New-Item -ItemType Directory -Path $target -Force | Out-Null
 Copy-Item -Path (Join-Path $PSScriptRoot '*') -Destination $target -Recurse -Force
 # Files from a downloaded zip are marked as coming from the internet; clear that so Windows doesn't block them.
 Get-ChildItem $target -Recurse -File | Unblock-File
-
-# Tell Word where the Word add-in's manifest will be. The file isn't there until the user chooses
-# "Set up Word add-in" in the app, and Word ignores the entry until then. It is written here because the
-# app, once installed as a package, can't make registry changes that other apps see.
-$wordKey = 'HKCU:\Software\Microsoft\Office\16.0\WEF\Developer'
-$addinId = '6f0c1f0e-6b1c-4f6e-9a57-2f1d5b7c8e41'
-$addinManifest = Join-Path $env:LOCALAPPDATA 'Nogrammerly\word-addin.xml'
-$current = (Get-ItemProperty $wordKey -ErrorAction SilentlyContinue).$addinId
-# Leave the entry alone if it points at another copy that exists, such as a developer's own.
-if (-not $current -or -not (Test-Path -LiteralPath $current)) {
-    # Only make the key if it is missing: making it again would wipe what other add-ins keep there.
-    if (-not (Test-Path $wordKey)) { New-Item $wordKey -Force | Out-Null }
-    Set-ItemProperty $wordKey -Name $addinId -Value $addinManifest
-}
 
 $devMode = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock' -ErrorAction SilentlyContinue).AllowDevelopmentWithoutDevLicense -eq 1
 $registered = $false
