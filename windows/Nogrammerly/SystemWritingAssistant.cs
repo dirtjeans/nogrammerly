@@ -7,10 +7,14 @@ using Nogrammerly.Core;
 namespace Nogrammerly;
 
 /// <summary>An issue drawn on screen: one rectangle per line it covers, in physical screen pixels.</summary>
+/// <summary>An app the user has typed in: its program name (which exclusions go by) and a name to show.</summary>
+internal sealed record AppInfo(string Key, string Name);
+
 internal sealed record Mark(WritingSuggestion Suggestion, Rectangle[] Rects);
 
 /// <summary>What the UI shows for the focused field. Immutable, so it can cross from the worker thread to the UI thread.</summary>
-internal sealed record FieldState(IReadOnlyList<WritingSuggestion> Suggestions, IReadOnlyList<Mark> Marks, Rectangle? Frame, bool HasSelection, Rectangle? Caret = null)
+/// <param name="Partial">True when only the part of a long document that is on screen is being checked.</param>
+internal sealed record FieldState(IReadOnlyList<WritingSuggestion> Suggestions, IReadOnlyList<Mark> Marks, Rectangle? Frame, bool HasSelection, Rectangle? Caret = null, bool Partial = false)
 {
     public static readonly FieldState None = new([], [], null, false);
     public bool IsActive => Frame is not null;
@@ -31,6 +35,9 @@ internal sealed class SystemWritingAssistant : IDisposable
     private readonly SynchronizationContext ui;
     private readonly SpellChecker spellChecker = new(CultureInfo.CurrentUICulture.Name);
     private readonly IgnoreList ignored;
+    private readonly AppExclusions exclusions;
+    private readonly Dictionary<int, AppInfo?> apps = [];
+    private volatile AppInfo? lastApp;
     private readonly int ownProcessId = Environment.ProcessId;
     private volatile bool running = true;
 
@@ -46,9 +53,10 @@ internal sealed class SystemWritingAssistant : IDisposable
     /// <summary>Raised on the UI thread with a message for the user.</summary>
     public event Action<string>? Notice;
 
-    public SystemWritingAssistant(IgnoreList ignored)
+    public SystemWritingAssistant(IgnoreList ignored, AppExclusions exclusions)
     {
         this.ignored = ignored;
+        this.exclusions = exclusions;
         ui = SynchronizationContext.Current ?? throw new InvalidOperationException("Create on the UI thread.");
         // UI Automation clients should run on an MTA thread of their own.
         worker = new Thread(Run) { IsBackground = true, Name = "UI Automation" };
@@ -57,6 +65,9 @@ internal sealed class SystemWritingAssistant : IDisposable
     }
 
     public bool IsRunning => running;
+
+    /// <summary>The app the user last wrote in, or last tried to in an app that is left alone. For the menu.</summary>
+    public AppInfo? LastApp => lastApp;
 
     public void SetRunning(bool value)
     {
@@ -122,18 +133,45 @@ internal sealed class SystemWritingAssistant : IDisposable
     {
         // While one of our own menus is open, keep the state for the field the user was in.
         if (NativeMethods.ForegroundProcessId() == ownProcessId) return;
-        var focused = TextField.From(automation!.FocusedElement());
+        var element = automation!.FocusedElement();
+        var app = AppOf(element);
+        // An app that is left alone is not read at all: the check comes before any text is fetched.
+        if (app is not null && exclusions.IsExcluded(app.Key)) { lastApp = app; Reset(); return; }
+        var focused = TextField.From(element);
         var value = focused?.ReadText();
         if (focused is null || string.IsNullOrEmpty(value) || value.Length > WritingEngine.MaxLength) { Reset(); return; }
+        if (app is not null) lastApp = app;
 
-        if (field is null || !field.IsSameElement(focused) || value != text)
+        var changed = field is null || !field.IsSameElement(focused) || value != text;
+        // Always keep the newest reading: for a document it also knows what is on screen now, after scrolling.
+        field = focused;
+        if (changed)
         {
-            field = focused;
             text = value;
             suggestions = WritingEngine.Analyze(value, spellChecker.Check).Suggestions.Where(s => !ignored.Contains(s)).ToList();
             ScheduleProofread(value);
         }
         Publish(suggestions);
+    }
+
+    /// <summary>Which app <paramref name="element"/> belongs to; null if that can't be told.</summary>
+    private AppInfo? AppOf(FlaUI.Core.AutomationElements.AutomationElement? element)
+    {
+        try
+        {
+            if (element is null) return null;
+            var pid = element.Properties.ProcessId.ValueOrDefault;
+            if (pid == 0 || pid == ownProcessId) return null;
+            if (apps.TryGetValue(pid, out var known)) return known;
+            if (apps.Count > 200) apps.Clear();
+            using var process = System.Diagnostics.Process.GetProcessById(pid);
+            var name = process.ProcessName;
+            // The friendly name ("Microsoft Word") can't be read for every app; the program name always can.
+            try { if (process.MainModule?.FileVersionInfo.FileDescription is { Length: > 0 } described) name = described; }
+            catch (Exception) { }
+            return apps[pid] = new AppInfo(process.ProcessName, name);
+        }
+        catch (Exception) { return null; }
     }
 
     /// <summary>Debounced on-device model pass; merges its findings behind the instant spelling and style results.</summary>
@@ -165,14 +203,14 @@ internal sealed class SystemWritingAssistant : IDisposable
         if (frame is { } visible && field.HasLayout)
         {
             var clip = Rectangle.Inflate(visible, 2, 2);
-            foreach (var suggestion in current.Take(MaxMarks))
+            foreach (var suggestion in current.Where(s => field.MayBeVisible(s.Span)).Take(MaxMarks))
             {
                 // Lines scrolled out of view, or reported outside the control, are not drawn over other windows.
                 var rects = field.Bounds(suggestion.Span).Where(r => r is { Width: > 0, Height: > 0 and < 120 } && clip.Contains(r)).ToArray();
                 if (rects.Length > 0) marks.Add(new Mark(suggestion, rects));
             }
         }
-        Post(new FieldState(current, marks, frame, field.HasSelectedText(), field.Caret()));
+        Post(new FieldState(current, marks, frame, field.HasSelectedText(), field.Caret(), field.IsPartial));
     }
 
     private void Reset()
@@ -194,7 +232,7 @@ internal sealed class SystemWritingAssistant : IDisposable
         _ = Task.Run(async () =>
         {
             var rewritten = await AIWriter.RewriteAsync(original, tone) ?? WritingEngine.Rewrite(original, tone);
-            work.Add(() => { if (field == target) ReplaceText(span, original, rewritten); });
+            work.Add(() => { if (field is not null && field.IsSameElement(target)) ReplaceText(span, original, rewritten); });
         });
     }
 

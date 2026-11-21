@@ -110,7 +110,10 @@ internal static class AddinSetup
     {
         var template = File.ReadAllText(Path.Combine(SiteRoot, "manifest.xml"));
         Directory.CreateDirectory(Path.GetDirectoryName(manifestPath)!);
-        File.WriteAllText(manifestPath, AddinSite.ManifestFor(template, AddinSite.Origin(port)));
+        var manifest = AddinSite.ManifestFor(template, AddinSite.Origin(port));
+        // Leave an up-to-date file untouched. Word treats a manifest that has changed as a new add-in and
+        // drops its button from the ribbon, so rewriting it at every start would undo the user's set-up.
+        if (!File.Exists(manifestPath) || File.ReadAllText(manifestPath) != manifest) File.WriteAllText(manifestPath, manifest);
         // Covers a copy that was not installed as a package, or was installed by an older installer.
         try
         {

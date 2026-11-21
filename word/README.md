@@ -2,6 +2,8 @@
 
 A Word add-in that checks your document with the Nogrammerly app on the same PC. It underlines issues in the document and lists each one, with its fix, in a side pane. Nothing you write leaves the PC.
 
+**You may not need this.** Nogrammerly for Windows now checks Word documents by itself, with nothing to set up. This add-in is an alternative that uses Word's own underlines and a side pane. Word does not keep its button between restarts: each time you start Word, load it from **Home › Add-ins**, or from the ✦ menu with **Open Word with Nogrammerly**.
+
 The add-in does no checking itself. It sends each paragraph to the Nogrammerly app over a local connection, called [the bridge](../windows/README.md#add-ins-for-other-apps-the-bridge). The app runs the same spelling, style and on-device AI checks it uses everywhere else.
 
 ## What you need
@@ -17,9 +19,9 @@ Underlines in the document need Word for Microsoft 365. Without it, the side pan
 2. Click the ✦ icon near the clock, then choose **Add-ins for other apps › Set up Word add-in…**.
 3. Confirm the certificate when Windows asks.
 
-Word then opens with Nogrammerly loaded. From then on, **Nogrammerly** is on Word's **Home** tab. The Nogrammerly app serves the add-in's pages to Word itself, so nothing else needs to run.
+Word then opens with Nogrammerly loaded, and **Nogrammerly** is on Word's **Home** tab until you close Word. The Nogrammerly app serves the add-in's pages to Word itself, so nothing else needs to run.
 
-If the button ever goes missing, choose **Add-ins for other apps › Open Word with Nogrammerly**. You can also find it in Word under **Home › Add-ins › Developer Add-ins**.
+To load it in a later session, choose **Add-ins for other apps › Open Word with Nogrammerly**. You can also find it in Word under **Home › Add-ins › Developer Add-ins**.
 
 Install Nogrammerly with `Install.cmd` before you set up the add-in. The installer is what tells Word where the add-in lives.
 

@@ -16,6 +16,7 @@ internal sealed class TrayApp : ApplicationContext
     private static readonly string BridgeFile = Path.Combine(DataFolder, "bridge.json");
     private static readonly string WordManifest = Path.Combine(DataFolder, "word-addin.xml");
     private readonly IgnoreList ignored = new(Path.Combine(DataFolder, "ignored.json"));
+    private readonly AppExclusions exclusions = new(Path.Combine(DataFolder, "apps.json"));
     private readonly SystemWritingAssistant assistant;
     private BridgeSettings bridgeSettings = BridgeSettings.Load(BridgeFile);
     private LocalBridge? bridge;
@@ -31,7 +32,7 @@ internal sealed class TrayApp : ApplicationContext
 
     public TrayApp(bool firstRun)
     {
-        assistant = new SystemWritingAssistant(ignored);
+        assistant = new SystemWritingAssistant(ignored, exclusions);
         fieldButton = new FieldButton(() => ShowMenu(BuildFieldMenu()), Path.Combine(DataFolder, "button.txt"));
         tray.Icon = Icon.ExtractAssociatedIcon(Environment.ProcessPath!) ?? SystemIcons.Application;
         tray.Text = "Nogrammerly";
@@ -152,6 +153,21 @@ internal sealed class TrayApp : ApplicationContext
         Apply(bridgeSettings with { WordAddin = false });
     }
 
+    /// <summary>Lets the user stop Nogrammerly reading an app, or start it again.</summary>
+    private void AddAppItems(ToolStripItemCollection items)
+    {
+        if (assistant.LastApp is { } app)
+        {
+            var on = !exclusions.IsExcluded(app.Key);
+            items.Add(new ToolStripMenuItem($"Check my writing in {app.Name}", null, (_, _) => exclusions.Set(app.Key, on)) { Checked = on });
+        }
+        var chosen = exclusions.ChosenByUser;
+        if (chosen.Count == 0) return;
+        var menu = new ToolStripMenuItem("Apps left alone");
+        foreach (var name in chosen) menu.DropDownItems.Add($"Check {name} again", null, (_, _) => exclusions.Set(name, false));
+        items.Add(menu);
+    }
+
     private void AddBridgeItems(ToolStripItemCollection items)
     {
         var menu = new ToolStripMenuItem("Add-ins for other apps");
@@ -242,6 +258,7 @@ internal sealed class TrayApp : ApplicationContext
         }
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(assistant.IsRunning ? "Pause" : "Resume", null, (_, _) => { assistant.SetRunning(!assistant.IsRunning); Render(FieldState.None); });
+        AddAppItems(menu.Items);
         if (fieldButton.IsMoved) menu.Items.Add("Put the round button back in the corner", null, (_, _) => fieldButton.ResetPosition());
         AddBridgeItems(menu.Items);
         menu.Items.Add("How to use…", null, (_, _) => Welcome());
@@ -295,7 +312,8 @@ internal sealed class TrayApp : ApplicationContext
         }
         if (state.Suggestions.Count > 0) items.Add(new ToolStripSeparator());
         if (state.HasSelection) items.Add(ToneMenu("Rewrite selection", assistant.RewriteSelection));
-        items.Add(ToneMenu("Rewrite entire text", assistant.RewriteAll));
+        // In a long document only the part on screen is being checked, so there is no "entire text" to rewrite.
+        if (!state.Partial) items.Add(ToneMenu("Rewrite entire text", assistant.RewriteAll));
     }
 
     private void AddSuggestionItems(ToolStripItemCollection items, WritingSuggestion suggestion)
