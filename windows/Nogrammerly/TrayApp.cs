@@ -37,6 +37,8 @@ internal sealed class TrayApp : ApplicationContext
         tray.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) ShowMenu(BuildFieldMenu()); };
 
         assistant.StateChanged += Render;
+        // The ring shows only while a rewrite the user asked for is under way, never for background checking.
+        assistant.RewritingChanged += fieldButton.SetRewriting;
         assistant.Notice += message => tray.ShowBalloonTip(4000, "Nogrammerly", message, ToolTipIcon.None);
 
         // Kept in a field: the hook must not be garbage collected while Windows still calls it.
