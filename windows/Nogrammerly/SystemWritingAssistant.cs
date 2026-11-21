@@ -52,6 +52,8 @@ internal sealed class SystemWritingAssistant : IDisposable
     public event Action<FieldState>? StateChanged;
     /// <summary>Raised on the UI thread with a message for the user.</summary>
     public event Action<string>? Notice;
+    /// <summary>Raised on the UI thread when a rewrite the user asked for starts, and again when it ends.</summary>
+    public event Action<bool>? RewritingChanged;
 
     public SystemWritingAssistant(IgnoreList ignored, AppExclusions exclusions)
     {
@@ -229,10 +231,15 @@ internal sealed class SystemWritingAssistant : IDisposable
         var target = field;
         var original = text.Substring(span.Start, span.Length);
         Say(AIWriter.IsReady ? "Rewriting…" : "Rewriting with built-in rules (on-device AI is not set up)…");
+        ui.Post(_ => RewritingChanged?.Invoke(true), null);
         _ = Task.Run(async () =>
         {
-            var rewritten = await AIWriter.RewriteAsync(original, tone) ?? WritingEngine.Rewrite(original, tone);
-            work.Add(() => { if (field is not null && field.IsSameElement(target)) ReplaceText(span, original, rewritten); });
+            try
+            {
+                var rewritten = await AIWriter.RewriteAsync(original, tone) ?? WritingEngine.Rewrite(original, tone);
+                work.Add(() => { if (field is not null && field.IsSameElement(target)) ReplaceText(span, original, rewritten); });
+            }
+            finally { ui.Post(_ => RewritingChanged?.Invoke(false), null); }
         });
     }
 

@@ -89,6 +89,16 @@ internal sealed class UnderlineOverlay : FloatingWindow
     }
 }
 
+/// <summary>What the on-device AI is doing, as shown on the round button.</summary>
+internal enum AiActivity
+{
+    None,
+    /// <summary>Checking text in the background: a thin, slow, faint ring.</summary>
+    Checking,
+    /// <summary>A rewrite the user asked for and is waiting on: a full, faster ring.</summary>
+    Rewriting,
+}
+
 /// <summary>
 /// Grammarly-style round button in the bottom-right corner of the field being edited. The user can drag it
 /// somewhere else in the field; it remembers that place, and it steps aside when the text cursor comes close.
@@ -101,7 +111,11 @@ internal sealed class FieldButton : FloatingWindow
     private readonly string? savePath;
     private int issues;
     private int size = BaseSize;
-    private (int Size, int Issues) drawn;
+    private (int Size, int Issues, AiActivity Activity, float Angle) drawn;
+    private AiActivity activity;
+    private float angle;
+    private long lastTurn;
+    private readonly System.Windows.Forms.Timer spin = new() { Interval = 33 };
     private Point offset;
     private Rectangle field;
     private Rectangle screen;
@@ -143,6 +157,25 @@ internal sealed class FieldButton : FloatingWindow
         };
         var tip = new ToolTip();
         tip.SetToolTip(this, "Nogrammerly: suggestions and rewrites. Drag to move.");
+        spin.Tick += (_, _) =>
+        {
+            var now = Environment.TickCount64;
+            var degreesPerSecond = activity == AiActivity.Rewriting ? 300f : 110f;
+            angle = (angle + degreesPerSecond * (now - lastTurn) / 1000f) % 360f;
+            lastTurn = now;
+            if (Visible) Draw();
+        };
+    }
+
+    /// <summary>Shows or hides the ring that says the on-device AI is working.</summary>
+    public void SetActivity(AiActivity value)
+    {
+        if (activity == value) return;
+        activity = value;
+        lastTurn = Environment.TickCount64;
+        // People who turn animations off in Windows get a ring that stays still.
+        spin.Enabled = value != AiActivity.None && AnimationsEnabled();
+        if (Visible) Draw();
     }
 
     public bool IsMoved => offset != Point.Empty;
@@ -194,15 +227,15 @@ internal sealed class FieldButton : FloatingWindow
             var side = size + 2 * Pad;
             ShowAt(new Rectangle(WindowSpot(ButtonPlacement.Place(field, screen, size, offset, dpi, caret)), new Size(side, side)));
         }
-        if (drawn != (size, issues)) Draw();
+        if (drawn != (size, issues, activity, angle)) Draw();
     }
 
     /// <summary>Paints the shadow, circle and label, and hands the picture to Windows with its transparency.</summary>
     private void Draw()
     {
         if (!IsHandleCreated) return;
-        using var bitmap = Render(size, Pad, issues);
-        if (SetLayeredBitmap(Handle, bitmap, Location)) drawn = (size, issues);
+        using var bitmap = Render(size, Pad, issues, activity, angle);
+        if (SetLayeredBitmap(Handle, bitmap, Location)) drawn = (size, issues, activity, angle);
     }
 
     /// <summary>
@@ -210,7 +243,7 @@ internal sealed class FieldButton : FloatingWindow
     /// a wide, soft shadow pushed down below the circle (how high it floats), a short dark one hugging its
     /// lower edge (where it meets the page), and a face that is lighter at the top than at the bottom.
     /// </summary>
-    internal static Bitmap Render(int size, int pad, int issues)
+    internal static Bitmap Render(int size, int pad, int issues, AiActivity activity = AiActivity.None, float angle = 0)
     {
         var side = size + 2 * pad;
         var bitmap = new Bitmap(side, side, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
@@ -237,6 +270,8 @@ internal sealed class FieldButton : FloatingWindow
             using (var rim = new Pen(Color.FromArgb(70, 255, 255, 255), Math.Max(1f, size / 26f)))
                 g.DrawArc(rim, RectangleF.Inflate(face, -rim.Width / 2, -rim.Width / 2), 200, 140);
 
+            if (activity != AiActivity.None) Ring(g, centre, radius, size, activity, angle);
+
             var label = issues == 0 ? "✦" : Math.Min(issues, 99).ToString();
             using var font = new Font("Segoe UI", size * (issues == 0 ? 0.42f : 0.38f), FontStyle.Bold, GraphicsUnit.Pixel);
             using var centred = new StringFormat(StringFormat.GenericTypographic) { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
@@ -244,6 +279,59 @@ internal sealed class FieldButton : FloatingWindow
         }
         return bitmap;
     }
+
+    /// <summary>
+    /// A ring of colour just outside the circle, turned by <paramref name="angle"/> degrees, over a wider,
+    /// fainter copy that gives it a glow. The colours run blue, violet, pink, amber and back again.
+    /// </summary>
+    private static void Ring(Graphics g, float centre, float radius, int size, AiActivity activity, float angle)
+    {
+        var strong = activity == AiActivity.Rewriting;
+        var width = size * (strong ? 0.11f : 0.07f);
+        var opacity = strong ? 1f : 0.6f;
+        var r = radius + size * 0.03f + width / 2;
+        var side = (int)Math.Ceiling(2 * centre);
+        foreach (var (extra, strength) in new[] { (width * 1.5f, opacity * 0.22f), (0f, opacity) })
+        {
+            // The ring is painted solid on a sheet of its own and then laid down see-through as one piece.
+            // Painting see-through arcs directly would show a seam wherever two of them overlap.
+            using var layer = new Bitmap(side, side, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+            using (var paint = Graphics.FromImage(layer))
+            {
+                paint.SmoothingMode = SmoothingMode.AntiAlias;
+                const int Arcs = 90;
+                var box = new RectangleF(centre - r, centre - r, 2 * r, 2 * r);
+                for (var i = 0; i < Arcs; i++)
+                {
+                    using var pen = new Pen(Glow(i / (float)Arcs), width + extra);
+                    paint.DrawArc(pen, box, angle + i * 360f / Arcs, 360f / Arcs + 1.5f);
+                }
+            }
+            using var fade = new System.Drawing.Imaging.ImageAttributes();
+            fade.SetColorMatrix(new System.Drawing.Imaging.ColorMatrix { Matrix33 = strength });
+            g.DrawImage(layer, new Rectangle(0, 0, side, side), 0, 0, side, side, GraphicsUnit.Pixel, fade);
+        }
+    }
+
+    private static readonly Color[] GlowStops =
+        [
+            Color.FromArgb(79, 139, 255), Color.FromArgb(155, 107, 255), Color.FromArgb(255, 95, 162), Color.FromArgb(255, 179, 71),
+            // Back the way it came: amber straight to blue would pass through a muddy grey.
+            Color.FromArgb(255, 95, 162), Color.FromArgb(155, 107, 255),
+        ];
+
+    /// <summary>A colour from the ring's loop of colours; 0 and 1 are the same colour.</summary>
+    private static Color Glow(float t)
+    {
+        var place = t * GlowStops.Length;
+        var from = GlowStops[(int)place % GlowStops.Length];
+        var to = GlowStops[((int)place + 1) % GlowStops.Length];
+        var mix = place - (int)place;
+        int Blend(int a, int b) => (int)Math.Round(a + (b - a) * mix);
+        return Color.FromArgb(Blend(from.R, to.R), Blend(from.G, to.G), Blend(from.B, to.B));
+    }
+
+    private static bool AnimationsEnabled() => !ClientAreaAnimationOff();
 
     /// <summary>
     /// A blurred black disc: full strength (<paramref name="strength"/>, 0 to 1) out to <paramref name="core"/>,

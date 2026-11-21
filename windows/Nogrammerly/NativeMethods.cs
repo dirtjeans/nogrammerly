@@ -72,6 +72,15 @@ internal static class NativeMethods
         if (attached) AttachThreadInput(ourThread, foregroundThread, false);
     }
 
+    // Windows' "show animations" setting
+
+    [DllImport("user32.dll")]
+    private static extern bool SystemParametersInfo(uint uiAction, uint uiParam, out bool pvParam, uint fWinIni);
+
+    /// <summary>True when the user has turned animations off in Windows' accessibility settings.</summary>
+    public static bool ClientAreaAnimationOff() =>
+        SystemParametersInfo(0x1042 /* SPI_GETCLIENTAREAANIMATION */, 0, out var enabled, 0) && !enabled;
+
     // Per-pixel transparent windows
 
     [StructLayout(LayoutKind.Sequential)]
