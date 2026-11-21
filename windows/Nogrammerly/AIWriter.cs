@@ -93,17 +93,8 @@ internal static class AIWriter
     /// <summary>Loads the model ahead of the first check, so the first underline does not wait for it.</summary>
     public static Task PrewarmAsync() => IsReady ? GenerateAsync("Reply with OK.") : Task.CompletedTask;
 
-    private static int working;
-
-    /// <summary>
-    /// Raised when the model starts work and again when it has none left, so the UI can show that something is
-    /// happening. It includes time spent waiting for the model to be free. May be raised on any thread.
-    /// </summary>
-    public static event Action<bool>? BusyChanged;
-
     private static async Task<string?> GenerateAsync(string prompt)
     {
-        if (Interlocked.Increment(ref working) == 1) BusyChanged?.Invoke(true);
         await Gate.WaitAsync();
         try
         {
@@ -118,7 +109,6 @@ internal static class AIWriter
         finally
         {
             Gate.Release();
-            if (Interlocked.Decrement(ref working) == 0) BusyChanged?.Invoke(false);
         }
     }
 }

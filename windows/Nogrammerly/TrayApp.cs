@@ -24,8 +24,6 @@ internal sealed class TrayApp : ApplicationContext
     private readonly IntPtr hook;
     private FieldState state = FieldState.None;
     private bool swallowRightButtonUp;
-    private bool rewriting;
-    private bool modelBusy;
 
     public TrayApp(bool firstRun)
     {
@@ -39,9 +37,8 @@ internal sealed class TrayApp : ApplicationContext
         tray.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) ShowMenu(BuildFieldMenu()); };
 
         assistant.StateChanged += Render;
-        // A rewrite the user is waiting for gets the full ring; background checking gets a quieter one.
-        assistant.RewritingChanged += on => { rewriting = on; ShowAiActivity(); };
-        AIWriter.BusyChanged += on => ui.Post(_ => { modelBusy = on; ShowAiActivity(); }, null);
+        // The ring shows only while a rewrite the user asked for is under way, never for background checking.
+        assistant.RewritingChanged += fieldButton.SetRewriting;
         assistant.Notice += message => tray.ShowBalloonTip(4000, "Nogrammerly", message, ToolTipIcon.None);
 
         // Kept in a field: the hook must not be garbage collected while Windows still calls it.
@@ -66,9 +63,6 @@ internal sealed class TrayApp : ApplicationContext
         foreach (var name in chosen) menu.DropDownItems.Add($"Check {name} again", null, (_, _) => exclusions.Set(name, false));
         items.Add(menu);
     }
-
-    private void ShowAiActivity() =>
-        fieldButton.SetActivity(rewriting ? AiActivity.Rewriting : modelBusy ? AiActivity.Checking : AiActivity.None);
 
     private void Render(FieldState newState)
     {
