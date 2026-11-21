@@ -49,6 +49,7 @@ The ✦ menu shows whether the AI is on. Without Developer Mode, or on a PC that
   - rewrite your selection;
   - rewrite the whole text.
 - **Drag the round button** if it is in your way. It remembers where you put it, and it steps aside when the text cursor comes close. To undo the move, click the ✦ icon and choose **Put the round button back in the corner**.
+- **In Word**, it works the same way: underlines in the document, and right-click to fix. In a long document it checks the part on screen and keeps up as you scroll.
 - **Click the ✦ icon** to:
   - pause Nogrammerly;
   - check whether the AI is on;

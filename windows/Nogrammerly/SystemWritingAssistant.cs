@@ -10,7 +10,8 @@ namespace Nogrammerly;
 internal sealed record Mark(WritingSuggestion Suggestion, Rectangle[] Rects);
 
 /// <summary>What the UI shows for the focused field. Immutable, so it can cross from the worker thread to the UI thread.</summary>
-internal sealed record FieldState(IReadOnlyList<WritingSuggestion> Suggestions, IReadOnlyList<Mark> Marks, Rectangle? Frame, bool HasSelection, Rectangle? Caret = null)
+/// <param name="Partial">True when only the part of a long document that is on screen is being checked.</param>
+internal sealed record FieldState(IReadOnlyList<WritingSuggestion> Suggestions, IReadOnlyList<Mark> Marks, Rectangle? Frame, bool HasSelection, Rectangle? Caret = null, bool Partial = false)
 {
     public static readonly FieldState None = new([], [], null, false);
     public bool IsActive => Frame is not null;
@@ -126,9 +127,11 @@ internal sealed class SystemWritingAssistant : IDisposable
         var value = focused?.ReadText();
         if (focused is null || string.IsNullOrEmpty(value) || value.Length > WritingEngine.MaxLength) { Reset(); return; }
 
-        if (field is null || !field.IsSameElement(focused) || value != text)
+        var changed = field is null || !field.IsSameElement(focused) || value != text;
+        // Always keep the newest reading: for a document it also knows what is on screen now, after scrolling.
+        field = focused;
+        if (changed)
         {
-            field = focused;
             text = value;
             suggestions = WritingEngine.Analyze(value, spellChecker.Check).Suggestions.Where(s => !ignored.Contains(s)).ToList();
             ScheduleProofread(value);
@@ -165,14 +168,14 @@ internal sealed class SystemWritingAssistant : IDisposable
         if (frame is { } visible && field.HasLayout)
         {
             var clip = Rectangle.Inflate(visible, 2, 2);
-            foreach (var suggestion in current.Take(MaxMarks))
+            foreach (var suggestion in current.Where(s => field.MayBeVisible(s.Span)).Take(MaxMarks))
             {
                 // Lines scrolled out of view, or reported outside the control, are not drawn over other windows.
                 var rects = field.Bounds(suggestion.Span).Where(r => r is { Width: > 0, Height: > 0 and < 120 } && clip.Contains(r)).ToArray();
                 if (rects.Length > 0) marks.Add(new Mark(suggestion, rects));
             }
         }
-        Post(new FieldState(current, marks, frame, field.HasSelectedText(), field.Caret()));
+        Post(new FieldState(current, marks, frame, field.HasSelectedText(), field.Caret(), field.IsPartial));
     }
 
     private void Reset()
@@ -194,7 +197,7 @@ internal sealed class SystemWritingAssistant : IDisposable
         _ = Task.Run(async () =>
         {
             var rewritten = await AIWriter.RewriteAsync(original, tone) ?? WritingEngine.Rewrite(original, tone);
-            work.Add(() => { if (field == target) ReplaceText(span, original, rewritten); });
+            work.Add(() => { if (field is not null && field.IsSameElement(target)) ReplaceText(span, original, rewritten); });
         });
     }
 

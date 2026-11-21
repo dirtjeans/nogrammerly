@@ -171,7 +171,8 @@ internal sealed class TrayApp : ApplicationContext
         }
         if (state.Suggestions.Count > 0) items.Add(new ToolStripSeparator());
         if (state.HasSelection) items.Add(ToneMenu("Rewrite selection", assistant.RewriteSelection));
-        items.Add(ToneMenu("Rewrite entire text", assistant.RewriteAll));
+        // In a long document only the part on screen is being checked, so there is no "entire text" to rewrite.
+        if (!state.Partial) items.Add(ToneMenu("Rewrite entire text", assistant.RewriteAll));
     }
 
     private void AddSuggestionItems(ToolStripItemCollection items, WritingSuggestion suggestion)
