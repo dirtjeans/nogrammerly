@@ -49,7 +49,7 @@ internal class FloatingWindow : Form
 internal sealed class UnderlineOverlay : FloatingWindow
 {
     private static readonly Color Key = Color.FromArgb(255, 0, 255);
-    private (Rectangle Rect, Color Color)[] lines = [];
+    private (Rectangle Rect, Color Color, bool Dashed)[] lines = [];
 
     public UnderlineOverlay()
     {
@@ -69,11 +69,13 @@ internal sealed class UnderlineOverlay : FloatingWindow
 
     public void ShowMarks(IReadOnlyList<Mark> marks)
     {
-        var all = marks.SelectMany(m => m.Rects.Select(r => (Rect: r, Color: Theme.Color(m.Suggestion.Kind)))).ToArray();
+        // Sentence-wide issues first, so an issue with one word inside the sentence is drawn over them.
+        var all = marks.OrderByDescending(m => m.Suggestion.IsSentenceLevel)
+            .SelectMany(m => m.Rects.Select(r => (Rect: r, Color: Theme.Color(m.Suggestion.Kind), Dashed: m.Suggestion.IsSentenceLevel))).ToArray();
         if (all.Length == 0) { Hide(); return; }
         var area = all.Select(l => l.Rect).Aggregate(Rectangle.Union);
         area.Inflate(4, 4);
-        lines = all.Select(l => (new Rectangle(l.Rect.X - area.X, l.Rect.Y - area.Y, l.Rect.Width, l.Rect.Height), l.Color)).ToArray();
+        lines = all.Select(l => (new Rectangle(l.Rect.X - area.X, l.Rect.Y - area.Y, l.Rect.Width, l.Rect.Height), l.Color, l.Dashed)).ToArray();
         ShowAt(area);
         Invalidate();
     }
@@ -81,9 +83,10 @@ internal sealed class UnderlineOverlay : FloatingWindow
     protected override void OnPaint(PaintEventArgs e)
     {
         // No anti-aliasing: blended edge pixels would not match the transparency key and show as a pink fringe.
-        foreach (var (rect, color) in lines)
+        foreach (var (rect, color, dashed) in lines)
         {
-            using var pen = new Pen(color, Math.Max(2, rect.Height / 9));
+            // A whole sentence under a solid line would shout; a dashed one marks it without drowning the text.
+            using var pen = new Pen(color, Math.Max(2, rect.Height / 9)) { DashStyle = dashed ? DashStyle.Dash : DashStyle.Solid };
             e.Graphics.DrawLine(pen, rect.Left, rect.Bottom, rect.Right, rect.Bottom);
         }
     }

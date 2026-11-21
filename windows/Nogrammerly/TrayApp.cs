@@ -15,6 +15,7 @@ internal sealed class TrayApp : ApplicationContext
     private static readonly string DataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Nogrammerly");
     private readonly IgnoreList ignored = new(Path.Combine(DataFolder, "ignored.json"));
     private readonly AppExclusions exclusions = new(Path.Combine(DataFolder, "apps.json"));
+    private static readonly string ChecksFile = Path.Combine(DataFolder, "checks.txt");
     private readonly SystemWritingAssistant assistant;
     private readonly NotifyIcon tray = new();
     private readonly UnderlineOverlay overlay = new();
@@ -28,6 +29,8 @@ internal sealed class TrayApp : ApplicationContext
     public TrayApp(bool firstRun)
     {
         assistant = new SystemWritingAssistant(ignored, exclusions);
+        try { if (File.Exists(ChecksFile) && int.TryParse(File.ReadAllText(ChecksFile), out var saved)) assistant.Checks = (WritingChecks)saved & WritingChecks.All; }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
         fieldButton = new FieldButton(() => ShowMenu(BuildFieldMenu()), Path.Combine(DataFolder, "button.txt"));
         tray.Icon = Icon.ExtractAssociatedIcon(Environment.ProcessPath!) ?? SystemIcons.Application;
         tray.Text = "Nogrammerly";
@@ -47,6 +50,27 @@ internal sealed class TrayApp : ApplicationContext
 
         _ = AIWriter.PrewarmAsync();
         if (firstRun) Welcome();
+    }
+
+    /// <summary>Switches for the optional kinds of check. Spelling and the basic rules are always on.</summary>
+    private void AddCheckItems(ToolStripItemCollection items)
+    {
+        var menu = new ToolStripMenuItem("Also check for");
+        foreach (var (check, name) in new[]
+                 {
+                     (WritingChecks.Cliches, "Clichés and jargon"), (WritingChecks.Wordiness, "Wordy phrases"),
+                     (WritingChecks.PassiveVoice, "Passive voice"), (WritingChecks.Readability, "Hard-to-read sentences"),
+                 })
+        {
+            var on = assistant.Checks.HasFlag(check);
+            menu.DropDownItems.Add(new ToolStripMenuItem(name, null, (_, _) =>
+            {
+                assistant.Checks = on ? assistant.Checks & ~check : assistant.Checks | check;
+                try { Directory.CreateDirectory(DataFolder); File.WriteAllText(ChecksFile, ((int)assistant.Checks).ToString()); }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException) { } // Applies until the app quits.
+            }) { Checked = on });
+        }
+        items.Add(menu);
     }
 
     /// <summary>Lets the user stop Nogrammerly reading an app, or start it again.</summary>
@@ -83,7 +107,10 @@ internal sealed class TrayApp : ApplicationContext
             {
                 var info = Marshal.PtrToStructure<MSLLHOOKSTRUCT>(data);
                 var point = new Point(info.pt.X, info.pt.Y);
-                var hit = state.Marks.FirstOrDefault(m => m.Rects.Any(r => Rectangle.Inflate(r, 2, 4).Contains(point)));
+                // Where a sentence-wide issue and a word inside it both lie under the mouse, the word wins;
+                // the sentence can still be reached from any of its other words.
+                var hit = state.Marks.Where(m => m.Rects.Any(r => Rectangle.Inflate(r, 2, 4).Contains(point)))
+                    .OrderBy(m => m.Suggestion.IsSentenceLevel).FirstOrDefault();
                 if (hit is not null)
                 {
                     swallowRightButtonUp = true;
@@ -137,6 +164,7 @@ internal sealed class TrayApp : ApplicationContext
         }
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(assistant.IsRunning ? "Pause" : "Resume", null, (_, _) => { assistant.SetRunning(!assistant.IsRunning); Render(FieldState.None); });
+        AddCheckItems(menu.Items);
         AddAppItems(menu.Items);
         if (fieldButton.IsMoved) menu.Items.Add("Put the round button back in the corner", null, (_, _) => fieldButton.ResetPosition());
         menu.Items.Add("How to use…", null, (_, _) => Welcome());

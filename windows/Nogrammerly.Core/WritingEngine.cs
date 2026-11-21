@@ -27,7 +27,7 @@ public static class WritingEngine
         ("sorry to bother you", null, "This may undercut your request", SuggestionKind.Delivery),
     ];
 
-    public static WritingAnalysis Analyze(string text, Func<string, IEnumerable<WritingSuggestion>>? spelling = null)
+    public static WritingAnalysis Analyze(string text, Func<string, IEnumerable<WritingSuggestion>>? spelling = null, WritingChecks checks = WritingChecks.All)
     {
         var suggestions = new List<WritingSuggestion>();
         foreach (var rule in StyleRules)
@@ -41,6 +41,8 @@ public static class WritingEngine
                     original, replacement, span));
             }
         }
+        // The first rules above are the most specific, so they win where a phrase list below overlaps them.
+        suggestions.AddRange(StyleChecks.Find(text, checks));
         foreach (Match match in Regex.Matches(text, " {2,}"))
         {
             suggestions.Add(new WritingSuggestion(SuggestionKind.Correctness, "Extra space", "Use one space between words.", match.Value, " ", new TextSpan(match.Index, match.Length)));
@@ -50,7 +52,11 @@ public static class WritingEngine
             var count = CountWords(text.Substring(span.Start, span.Length));
             if (count > 28)
             {
-                suggestions.Add(new WritingSuggestion(SuggestionKind.Clarity, "Long sentence", $"This sentence has {count} words. Consider splitting it.", text.Substring(span.Start, span.Length), null, span));
+                suggestions.Add(new WritingSuggestion(SuggestionKind.Clarity, "Long sentence", $"This sentence has {count} words. Consider splitting it.", text.Substring(span.Start, span.Length), null, span, IsSentenceLevel: true));
+            }
+            else if (checks.HasFlag(WritingChecks.Readability) && StyleChecks.HardToRead(text, span) is { } hard)
+            {
+                suggestions.Add(hard);
             }
         }
         foreach (Match match in Regex.Matches(text, "!{2,}"))
@@ -62,15 +68,18 @@ public static class WritingEngine
         return new WritingAnalysis(merged, CountWords(text));
     }
 
-    /// <summary>Combines suggestion lists, dropping any whose span overlaps one already kept (earlier lists win).</summary>
+    /// <summary>
+    /// Combines suggestion lists, dropping any whose span overlaps one already kept (earlier lists win).
+    /// An issue with a whole sentence and an issue with words inside it are both kept: they say different things.
+    /// </summary>
     public static IReadOnlyList<WritingSuggestion> Merge(IEnumerable<WritingSuggestion> primary, IEnumerable<WritingSuggestion> secondary)
     {
         var kept = new List<WritingSuggestion>();
         foreach (var suggestion in primary.Concat(secondary))
         {
-            if (!kept.Any(k => k.Span.Overlaps(suggestion.Span) || k.Span == suggestion.Span)) kept.Add(suggestion);
+            if (!kept.Any(k => k.IsSentenceLevel == suggestion.IsSentenceLevel && (k.Span.Overlaps(suggestion.Span) || k.Span == suggestion.Span))) kept.Add(suggestion);
         }
-        return kept.OrderBy(s => s.Span.Start).ToList();
+        return kept.OrderBy(s => s.Span.Start).ThenByDescending(s => s.Span.Length).ToList();
     }
 
     /// <summary>Rule-based rewrite used when the on-device model is unavailable.</summary>
@@ -149,6 +158,6 @@ public static class WritingEngine
 
     private static int CountWords(string text) => text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
 
-    private static string MatchCase(string original, string replacement) =>
+    internal static string MatchCase(string original, string replacement) =>
         original.Length > 0 && char.IsUpper(original[0]) ? char.ToUpperInvariant(replacement[0]) + replacement[1..] : replacement;
 }

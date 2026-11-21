@@ -31,7 +31,9 @@ public sealed record WritingSuggestion(
     string Original,
     string? Replacement,
     TextSpan Span,
-    bool IsSpelling = false)
+    bool IsSpelling = false,
+    // True for an issue with a whole sentence, such as its length. It may sit over issues with words inside it.
+    bool IsSentenceLevel = false)
 {
     public Guid Id { get; } = Guid.NewGuid();
     /// <summary>

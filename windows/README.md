@@ -50,6 +50,7 @@ The ✦ menu shows whether the AI is on. Without Developer Mode, or on a PC that
   - rewrite the whole text.
 - **Drag the round button** if it is in your way. It remembers where you put it, and it steps aside when the text cursor comes close. To undo the move, click the ✦ icon and choose **Put the round button back in the corner**.
 - **In Word**, it works the same way: underlines in the document, and right-click to fix. In a long document it checks the part on screen and keeps up as you scroll.
+- **It also checks style**, with no AI needed: clichés and jargon, wordy phrases, passive voice, and sentences that are hard to read. A whole-sentence issue has a dashed underline. To switch any of these off, right-click the ✦ icon and choose **Also check for**.
 - **To leave an app alone**, click the ✦ icon while you are in that app and untick **Check my writing in …**. Password managers, remote-desktop windows and terminals are left alone from the start. **Apps left alone** in the same menu lists the ones you added.
 - **Click the ✦ icon** to:
   - pause Nogrammerly;

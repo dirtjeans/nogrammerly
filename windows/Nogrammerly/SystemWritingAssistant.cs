@@ -38,6 +38,7 @@ internal sealed class SystemWritingAssistant : IDisposable
     private readonly AppExclusions exclusions;
     private readonly Dictionary<int, AppInfo?> apps = [];
     private volatile AppInfo? lastApp;
+    private volatile int checks = (int)WritingChecks.All;
     private readonly int ownProcessId = Environment.ProcessId;
     private volatile bool running = true;
 
@@ -70,6 +71,17 @@ internal sealed class SystemWritingAssistant : IDisposable
 
     /// <summary>The app the user last wrote in, or last tried to in an app that is left alone. For the menu.</summary>
     public AppInfo? LastApp => lastApp;
+
+    /// <summary>The optional kinds of check that are switched on. Changing it checks the current text again.</summary>
+    public WritingChecks Checks
+    {
+        get => (WritingChecks)checks;
+        set
+        {
+            checks = (int)value;
+            work.Add(() => text = ""); // The next poll sees "changed" text and analyses it afresh.
+        }
+    }
 
     public void SetRunning(bool value)
     {
@@ -150,7 +162,7 @@ internal sealed class SystemWritingAssistant : IDisposable
         if (changed)
         {
             text = value;
-            suggestions = WritingEngine.Analyze(value, spellChecker.Check).Suggestions.Where(s => !ignored.Contains(s)).ToList();
+            suggestions = WritingEngine.Analyze(value, spellChecker.Check, Checks).Suggestions.Where(s => !ignored.Contains(s)).ToList();
             ScheduleProofread(value);
         }
         Publish(suggestions);
