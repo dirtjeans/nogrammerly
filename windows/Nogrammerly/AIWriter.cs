@@ -87,6 +87,48 @@ internal static class AIWriter
         return found;
     }
 
+    /// <summary>The most style rules put to the model for one paragraph, so a guide with many rules can't stall checking.</summary>
+    private const int MaxRulesPerParagraph = 4;
+    private static readonly Dictionary<(string Rule, string Paragraph), IReadOnlyList<WritingSuggestion>> RuleCache = [];
+
+    /// <summary>
+    /// Checks the style guides' judgement rules, one rule and one paragraph per request, so each request is
+    /// small enough for the on-device model. Only rules whose trigger words appear are asked about, and an
+    /// answer is remembered, so typing only re-checks the paragraph being edited.
+    /// <paramref name="onFound"/> is called as each paragraph's findings come in.
+    /// </summary>
+    public static async Task CheckRulesAsync(string text, StyleGuides guides, CancellationToken token, Action<IReadOnlyList<WritingSuggestion>> onFound)
+    {
+        if (!guides.HasRules || !IsReady) return;
+        foreach (var (paragraph, span) in Proofreading.Paragraphs(text))
+        {
+            // A heading or a few words rarely break a rule about tone or phrasing, and each request costs seconds.
+            if (paragraph.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length < 6) continue;
+            var found = new List<WritingSuggestion>();
+            foreach (var (guide, rule) in guides.RulesFor(paragraph).Take(MaxRulesPerParagraph))
+            {
+                if (token.IsCancellationRequested) return;
+                var key = (rule.Id + "\n" + rule.Rule, paragraph);
+                IReadOnlyList<WritingSuggestion>? local;
+                lock (RuleCache) RuleCache.TryGetValue(key, out local);
+                if (local is null)
+                {
+                    var reply = await GenerateAsync(Proofreading.RulePrompt(rule, paragraph));
+                    if (token.IsCancellationRequested) return;
+                    if (reply is null) continue; // A failed call is not an answer; try again next time.
+                    local = Proofreading.ParseRuleIssues(reply, paragraph, guide);
+                    lock (RuleCache)
+                    {
+                        if (RuleCache.Count > 2000) RuleCache.Clear();
+                        RuleCache[key] = local;
+                    }
+                }
+                found.AddRange(local.Select(s => s with { Span = new TextSpan(s.Span.Start + span.Start, s.Span.Length) }));
+            }
+            if (found.Count > 0) onFound(found);
+        }
+    }
+
     public static async Task<string?> RewriteAsync(string text, WritingTone tone) =>
         IsReady ? Proofreading.CleanRewrite(await GenerateAsync(Proofreading.RewritePrompt(text, tone))) : null;
 

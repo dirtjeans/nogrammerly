@@ -88,6 +88,31 @@ Right-click the ✦ icon and choose **Style guides › Open the guides folder**.
 - Add `"matchCase": true` to flag only one capitalisation, so that `US` is flagged and `us` is not.
 - **`patterns`** are regular expressions, for rules that a word list can't express.
 
+A guide can also hold these:
+
+- **`"serialComma": true`** flags "a, b and c" and offers "a, b, and c". It is a pattern check for the plainest lists only.
+- **`"firstMentions"`** asks for a full name the first time: `[{ "short": "Rocket", "full": "Acme Rocket" }]`.
+- **`"acronyms"`** asks for an acronym to be spelled out on first use, unless the text gives it in parentheses. List the ones every reader knows: `{ "known": ["AI", "IT"] }`.
+
+**Rules that need judgement.** Some rules can't be written as a word list, such as "write to the reader as you". With on-device AI on, a guide can put these to the model:
+
+```json
+"rules": [
+  {
+    "id": "second-person",
+    "rule": "Speak to the reader directly as “you”.",
+    "wrong": "Customers can see risk.",
+    "right": "You can see risk.",
+    "triggers": ["customers", "users"]
+  }
+],
+"keep": ["lateral movement"]
+```
+
+The model is small, so it is asked about one rule and one paragraph at a time. A rule is only asked about for a paragraph that contains one of its `triggers`, or matches its `when` regular expression. A rule with neither is asked about for every paragraph, which is slow, so use that sparingly. Answers are remembered until the paragraph changes. Each request takes a few seconds, so these suggestions arrive after the instant ones.
+
+`keep` lists terms of art that the AI must never reword. Wording a guide prefers is protected in the same way.
+
 **More than one guide.** Files are read in name order, and an earlier guide wins. Name them `1-house.json`, `2-microsoft.json` and so on. A later guide can't flag wording an earlier guide prefers, and can't rule again on wording an earlier guide has ruled on.
 
 Words that a guide asks for are not reported as spelling mistakes.

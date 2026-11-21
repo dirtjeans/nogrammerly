@@ -212,14 +212,20 @@ internal sealed class SystemWritingAssistant : IDisposable
         _ = Task.Run(async () =>
         {
             await Task.Delay(900, cancellation.Token);
-            var found = await AIWriter.ProofreadAsync(value, cancellation.Token);
-            if (cancellation.IsCancellationRequested || found.Count == 0) return;
-            work.Add(() =>
+            void Add(IReadOnlyList<WritingSuggestion> found)
             {
-                if (text != value) return;
-                suggestions = WritingEngine.Merge(suggestions, found.Where(s => !ignored.Contains(s)));
-                Publish(suggestions);
-            });
+                if (cancellation.IsCancellationRequested || found.Count == 0) return;
+                work.Add(() =>
+                {
+                    if (text != value) return;
+                    // Whatever the AI suggests, it may not reword a term the style guides settle.
+                    suggestions = WritingEngine.Merge(suggestions, found.Where(s => !ignored.Contains(s) && !guides.Protects(s.Original, s.Replacement)));
+                    Publish(suggestions);
+                });
+            }
+            Add(await AIWriter.ProofreadAsync(value, cancellation.Token));
+            // Then the style guides' judgement rules, which arrive a paragraph at a time.
+            await AIWriter.CheckRulesAsync(value, guides, cancellation.Token, Add);
         }, cancellation.Token);
     }
 

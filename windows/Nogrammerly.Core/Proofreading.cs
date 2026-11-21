@@ -36,6 +36,41 @@ public static class Proofreading
         {text}
         """;
 
+    /// <summary>
+    /// Asks the model about one rule from a style guide, and nothing else. One rule per request keeps the request
+    /// small enough for an on-device model, and stops it wandering off into general proofreading.
+    /// </summary>
+    public static string RulePrompt(StyleRule rule, string paragraph)
+    {
+        var example = rule.Wrong is null || rule.Right is null ? "" : $"\nWrong: {rule.Wrong}\nRight: {rule.Right}";
+        return $$"""
+            You are checking a piece of writing against ONE rule from a style guide. Ignore every other kind of problem.
+
+            Rule: {{rule.Rule}}{{example}}
+
+            Find each place where the text below breaks this rule.
+            Reply with only a JSON array, no other words. Each item is an object:
+            {"original": "...", "replacement": "...", "explanation": "..."}
+            "original" must be copied verbatim from the text and be as short as possible (a few words).
+            "replacement" is that wording corrected to follow the rule.
+            "explanation" says how it breaks the rule, in under 12 words.
+            Do not report anything that already follows the rule. If the text follows the rule, reply [].
+
+            Text:
+            {{paragraph}}
+            """;
+    }
+
+    /// <summary>Turns the model's reply about one style rule into suggestions labelled with the guide's name.</summary>
+    public static IReadOnlyList<WritingSuggestion> ParseRuleIssues(string reply, string paragraph, string guide) =>
+        ParseIssues(reply, paragraph).Select(issue => issue with
+        {
+            Kind = SuggestionKind.Style,
+            Title = $"{guide} style",
+            // ParseIssues puts the model's reason in the title; here it belongs with the suggested fix.
+            Explanation = $"{char.ToUpperInvariant(issue.Title[0])}{issue.Title[1..].TrimEnd('.')}. Use “{issue.Replacement}”.",
+        }).ToList();
+
     /// <summary>Non-empty paragraphs (split on line breaks) that are short enough to send to the model.</summary>
     public static IEnumerable<(string Text, TextSpan Span)> Paragraphs(string text)
     {
