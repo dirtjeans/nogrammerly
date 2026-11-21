@@ -39,6 +39,7 @@ internal sealed class SystemWritingAssistant : IDisposable
     private readonly Dictionary<int, AppInfo?> apps = [];
     private volatile AppInfo? lastApp;
     private volatile int checks = (int)WritingChecks.All;
+    private volatile StyleGuides guides = StyleGuides.None;
     private readonly int ownProcessId = Environment.ProcessId;
     private volatile bool running = true;
 
@@ -71,6 +72,17 @@ internal sealed class SystemWritingAssistant : IDisposable
 
     /// <summary>The app the user last wrote in, or last tried to in an app that is left alone. For the menu.</summary>
     public AppInfo? LastApp => lastApp;
+
+    /// <summary>The user's style guides. Changing them checks the current text again.</summary>
+    public StyleGuides Guides
+    {
+        get => guides;
+        set
+        {
+            guides = value;
+            work.Add(() => text = "");
+        }
+    }
 
     /// <summary>The optional kinds of check that are switched on. Changing it checks the current text again.</summary>
     public WritingChecks Checks
@@ -162,7 +174,10 @@ internal sealed class SystemWritingAssistant : IDisposable
         if (changed)
         {
             text = value;
-            suggestions = WritingEngine.Analyze(value, spellChecker.Check, Checks).Suggestions.Where(s => !ignored.Contains(s)).ToList();
+            var house = guides;
+            // A style guide outranks the general rules where they overlap, and its own words are not misspellings.
+            var general = WritingEngine.Analyze(value, spellChecker.Check, Checks).Suggestions.Where(s => !(s.IsSpelling && house.Prefers(s.Original)));
+            suggestions = WritingEngine.Merge(house.Find(value), general).Where(s => !ignored.Contains(s)).ToList();
             ScheduleProofread(value);
         }
         Publish(suggestions);

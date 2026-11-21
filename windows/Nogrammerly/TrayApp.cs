@@ -16,6 +16,7 @@ internal sealed class TrayApp : ApplicationContext
     private readonly IgnoreList ignored = new(Path.Combine(DataFolder, "ignored.json"));
     private readonly AppExclusions exclusions = new(Path.Combine(DataFolder, "apps.json"));
     private static readonly string ChecksFile = Path.Combine(DataFolder, "checks.txt");
+    private static readonly string GuidesFolder = Path.Combine(DataFolder, "guides");
     private readonly SystemWritingAssistant assistant;
     private readonly NotifyIcon tray = new();
     private readonly UnderlineOverlay overlay = new();
@@ -29,6 +30,7 @@ internal sealed class TrayApp : ApplicationContext
     public TrayApp(bool firstRun)
     {
         assistant = new SystemWritingAssistant(ignored, exclusions);
+        assistant.Guides = StyleGuides.Load(GuidesFolder);
         try { if (File.Exists(ChecksFile) && int.TryParse(File.ReadAllText(ChecksFile), out var saved)) assistant.Checks = (WritingChecks)saved & WritingChecks.All; }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
         fieldButton = new FieldButton(() => ShowMenu(BuildFieldMenu()), Path.Combine(DataFolder, "button.txt"));
@@ -50,6 +52,31 @@ internal sealed class TrayApp : ApplicationContext
 
         _ = AIWriter.PrewarmAsync();
         if (firstRun) Welcome();
+    }
+
+    /// <summary>
+    /// The user's style guides: rule files in a folder on this PC, checked in file-name order.
+    /// They are read at start and again when the user asks, after editing one.
+    /// </summary>
+    private void AddGuideItems(ToolStripItemCollection items)
+    {
+        var guides = assistant.Guides;
+        var menu = new ToolStripMenuItem("Style guides");
+        if (guides.Names.Count == 0) Header(menu.DropDownItems, "None yet. Put guide files in the folder.");
+        for (var i = 0; i < guides.Names.Count; i++) Header(menu.DropDownItems, $"{i + 1}. {guides.Names[i]}");
+        foreach (var problem in guides.Problems) Header(menu.DropDownItems, $"Couldn’t read {problem}");
+        menu.DropDownItems.Add(new ToolStripSeparator());
+        menu.DropDownItems.Add("Open the guides folder", null, (_, _) =>
+        {
+            try
+            {
+                Directory.CreateDirectory(GuidesFolder);
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(GuidesFolder) { UseShellExecute = true })?.Dispose();
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception) { }
+        });
+        menu.DropDownItems.Add("Read the guides again", null, (_, _) => assistant.Guides = StyleGuides.Load(GuidesFolder));
+        items.Add(menu);
     }
 
     /// <summary>Switches for the optional kinds of check. Spelling and the basic rules are always on.</summary>
@@ -165,6 +192,7 @@ internal sealed class TrayApp : ApplicationContext
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(assistant.IsRunning ? "Pause" : "Resume", null, (_, _) => { assistant.SetRunning(!assistant.IsRunning); Render(FieldState.None); });
         AddCheckItems(menu.Items);
+        AddGuideItems(menu.Items);
         AddAppItems(menu.Items);
         if (fieldButton.IsMoved) menu.Items.Add("Put the round button back in the corner", null, (_, _) => fieldButton.ResetPosition());
         menu.Items.Add("How to use…", null, (_, _) => Welcome());

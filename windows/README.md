@@ -59,6 +59,39 @@ The ✦ menu shows whether the AI is on. Without Developer Mode, or on a PC that
 
 Password fields are never read. Fixes are only typed while the app you're writing in is in front, and line breaks are typed as Shift+Enter, so a rewrite can't send a chat message early.
 
+## Style guides
+
+Nogrammerly can check your writing against a house style guide. A guide is a small rules file that you write, kept in a folder on your PC. Nothing in it is built into the app or sent anywhere.
+
+Right-click the ✦ icon and choose **Style guides › Open the guides folder**. Put one `.json` file there per guide. After you edit a file, choose **Read the guides again**.
+
+```json
+{
+  "name": "Acme",
+  "terms": [
+    { "avoid": ["web site", "web-site"], "use": "website", "note": "One word." },
+    { "avoid": "zero trust", "use": "Zero Trust" },
+    { "avoid": "US", "use": "U.S.", "matchCase": true },
+    { "avoid": "Acme Classic", "note": "Old product name." }
+  ],
+  "patterns": [
+    { "find": "(\\d+) ?percent\\b", "use": "$1%", "note": "Use the % sign." }
+  ]
+}
+```
+
+- **`avoid`** is the wording to flag: one phrase or a list. It matches whole words, in any capitals.
+- **`use`** is the preferred wording, offered as the fix. Leave it out for wording that should just be avoided.
+- **`note`** is the reason, shown with the suggestion.
+- A rule about capitals needs nothing special. With `"avoid": "zero trust", "use": "Zero Trust"`, only the wrong forms are flagged.
+- A lowercase term keeps its capital at the start of a sentence. Add `"exact": true` for a name that never takes one, such as `iptables`.
+- Add `"matchCase": true` to flag only one capitalisation, so that `US` is flagged and `us` is not.
+- **`patterns`** are regular expressions, for rules that a word list can't express.
+
+**More than one guide.** Files are read in name order, and an earlier guide wins. Name them `1-house.json`, `2-microsoft.json` and so on. A later guide can't flag wording an earlier guide prefers, and can't rule again on wording an earlier guide has ruled on.
+
+Words that a guide asks for are not reported as spelling mistakes.
+
 ## Troubleshooting
 
 - **Nothing happens in one app.** Check that it isn't switched off: click the ✦ icon while in that app and look at **Check my writing in …**.
