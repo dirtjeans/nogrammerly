@@ -27,7 +27,7 @@ internal sealed class TrayApp : ApplicationContext
     public TrayApp(bool firstRun)
     {
         assistant = new SystemWritingAssistant(ignored);
-        fieldButton = new FieldButton(() => ShowMenu(BuildFieldMenu()));
+        fieldButton = new FieldButton(() => ShowMenu(BuildFieldMenu()), Path.Combine(DataFolder, "button.txt"));
         tray.Icon = Icon.ExtractAssociatedIcon(Environment.ProcessPath!) ?? SystemIcons.Application;
         tray.Text = "Nogrammerly";
         tray.Visible = true;
@@ -50,7 +50,7 @@ internal sealed class TrayApp : ApplicationContext
     {
         state = newState;
         overlay.ShowMarks(state.Marks);
-        if (state.Frame is { } frame) fieldButton.ShowFor(frame, state.Suggestions.Count); else fieldButton.Hide();
+        if (state.Frame is { } frame) fieldButton.ShowFor(frame, state.Suggestions.Count, state.Caret); else fieldButton.Hide();
         var count = state.Suggestions.Count;
         tray.Text = !assistant.IsRunning ? "Nogrammerly (paused)" : count == 0 ? "Nogrammerly" : $"Nogrammerly: {count} suggestion{(count == 1 ? "" : "s")}";
     }
@@ -119,6 +119,7 @@ internal sealed class TrayApp : ApplicationContext
         }
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(assistant.IsRunning ? "Pause" : "Resume", null, (_, _) => { assistant.SetRunning(!assistant.IsRunning); Render(FieldState.None); });
+        if (fieldButton.IsMoved) menu.Items.Add("Put the round button back in the corner", null, (_, _) => fieldButton.ResetPosition());
         menu.Items.Add("How to use…", null, (_, _) => Welcome());
         menu.Items.Add("Quit Nogrammerly", null, (_, _) => ExitThread());
     }

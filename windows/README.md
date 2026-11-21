@@ -48,6 +48,7 @@ The ✦ menu shows whether the AI is on. Without Developer Mode, or on a PC that
   - see every suggestion;
   - rewrite your selection;
   - rewrite the whole text.
+- **Drag the round button** if it is in your way. It remembers where you put it, and it steps aside when the text cursor comes close. To undo the move, click the ✦ icon and choose **Put the round button back in the corner**.
 - **Click the ✦ icon** to:
   - pause Nogrammerly;
   - check whether the AI is on;

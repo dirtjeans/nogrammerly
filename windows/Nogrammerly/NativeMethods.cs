@@ -72,6 +72,62 @@ internal static class NativeMethods
         if (attached) AttachThreadInput(ourThread, foregroundThread, false);
     }
 
+    // Per-pixel transparent windows
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct SIZE { public int cx; public int cy; }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct BLENDFUNCTION { public byte BlendOp; public byte BlendFlags; public byte SourceConstantAlpha; public byte AlphaFormat; }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool UpdateLayeredWindow(IntPtr hwnd, IntPtr hdcDst, ref POINT pptDst, ref SIZE psize, IntPtr hdcSrc, ref POINT pptSrc, int crKey, ref BLENDFUNCTION pblend, int dwFlags);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetDC(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
+
+    [DllImport("gdi32.dll")]
+    private static extern IntPtr CreateCompatibleDC(IntPtr hdc);
+
+    [DllImport("gdi32.dll")]
+    private static extern bool DeleteDC(IntPtr hdc);
+
+    [DllImport("gdi32.dll")]
+    private static extern IntPtr SelectObject(IntPtr hdc, IntPtr h);
+
+    [DllImport("gdi32.dll")]
+    private static extern bool DeleteObject(IntPtr h);
+
+    /// <summary>
+    /// Shows <paramref name="bitmap"/> (32-bit, premultiplied alpha) as the whole content of a layered window,
+    /// so each pixel keeps its own transparency.
+    /// </summary>
+    public static bool SetLayeredBitmap(IntPtr hwnd, System.Drawing.Bitmap bitmap, System.Drawing.Point at)
+    {
+        var screen = GetDC(IntPtr.Zero);
+        var memory = CreateCompatibleDC(screen);
+        var handle = bitmap.GetHbitmap(System.Drawing.Color.FromArgb(0));
+        var previous = SelectObject(memory, handle);
+        try
+        {
+            var size = new SIZE { cx = bitmap.Width, cy = bitmap.Height };
+            var source = new POINT();
+            var target = new POINT { X = at.X, Y = at.Y };
+            var blend = new BLENDFUNCTION { BlendOp = 0 /* AC_SRC_OVER */, SourceConstantAlpha = 255, AlphaFormat = 1 /* AC_SRC_ALPHA */ };
+            return UpdateLayeredWindow(hwnd, screen, ref target, ref size, memory, ref source, 0, ref blend, 2 /* ULW_ALPHA */);
+        }
+        finally
+        {
+            SelectObject(memory, previous);
+            DeleteObject(handle);
+            DeleteDC(memory);
+            ReleaseDC(IntPtr.Zero, screen);
+        }
+    }
+
     // SendInput
 
     private const uint INPUT_KEYBOARD = 1;
