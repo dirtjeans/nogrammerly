@@ -50,6 +50,7 @@ The ✦ menu shows whether the AI is on. Without Developer Mode, or on a PC that
   - rewrite the whole text.
 - **Drag the round button** if it is in your way. It remembers where you put it, and it steps aside when the text cursor comes close. To undo the move, click the ✦ icon and choose **Put the round button back in the corner**.
 - **In Word**, it works the same way: underlines in the document, and right-click to fix. In a long document it checks the part on screen and keeps up as you scroll.
+- **To leave an app alone**, click the ✦ icon while you are in that app and untick **Check my writing in …**. Password managers, remote-desktop windows and terminals are left alone from the start. **Apps left alone** in the same menu lists the ones you added.
 - **Click the ✦ icon** to:
   - pause Nogrammerly;
   - check whether the AI is on;
@@ -59,6 +60,7 @@ Password fields are never read. Fixes are only typed while the app you're writin
 
 ## Troubleshooting
 
+- **Nothing happens in one app.** Check that it isn't switched off: click the ✦ icon while in that app and look at **Check my writing in …**.
 - **No underlines in one app.** Some apps, notably some Electron apps, don't tell Windows where their text is on screen. The round button and the ✦ menu still list and apply every suggestion.
 - **"Install with Install.cmd for on-device AI" in the ✦ menu.** Turn on Developer Mode, then run **Install.cmd** again.
 - **"On-device AI needs a Copilot+ PC".** This PC has no supported NPU. The spelling and style checks still work.

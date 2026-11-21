@@ -6,6 +6,9 @@ using Nogrammerly.Core;
 
 namespace Nogrammerly;
 
+/// <summary>An app the user has typed in: its program name (which exclusions go by) and a name to show.</summary>
+internal sealed record AppInfo(string Key, string Name);
+
 /// <summary>An issue drawn on screen: one rectangle per line it covers, in physical screen pixels.</summary>
 internal sealed record Mark(WritingSuggestion Suggestion, Rectangle[] Rects);
 
@@ -32,6 +35,9 @@ internal sealed class SystemWritingAssistant : IDisposable
     private readonly SynchronizationContext ui;
     private readonly SpellChecker spellChecker = new(CultureInfo.CurrentUICulture.Name);
     private readonly IgnoreList ignored;
+    private readonly AppExclusions exclusions;
+    private readonly Dictionary<int, AppInfo?> apps = [];
+    private volatile AppInfo? lastApp;
     private readonly int ownProcessId = Environment.ProcessId;
     private volatile bool running = true;
 
@@ -47,9 +53,10 @@ internal sealed class SystemWritingAssistant : IDisposable
     /// <summary>Raised on the UI thread with a message for the user.</summary>
     public event Action<string>? Notice;
 
-    public SystemWritingAssistant(IgnoreList ignored)
+    public SystemWritingAssistant(IgnoreList ignored, AppExclusions exclusions)
     {
         this.ignored = ignored;
+        this.exclusions = exclusions;
         ui = SynchronizationContext.Current ?? throw new InvalidOperationException("Create on the UI thread.");
         // UI Automation clients should run on an MTA thread of their own.
         worker = new Thread(Run) { IsBackground = true, Name = "UI Automation" };
@@ -58,6 +65,9 @@ internal sealed class SystemWritingAssistant : IDisposable
     }
 
     public bool IsRunning => running;
+
+    /// <summary>The app the user last wrote in, or last tried to in an app that is left alone. For the menu.</summary>
+    public AppInfo? LastApp => lastApp;
 
     public void SetRunning(bool value)
     {
@@ -123,9 +133,14 @@ internal sealed class SystemWritingAssistant : IDisposable
     {
         // While one of our own menus is open, keep the state for the field the user was in.
         if (NativeMethods.ForegroundProcessId() == ownProcessId) return;
-        var focused = TextField.From(automation!.FocusedElement());
+        var element = automation!.FocusedElement();
+        var app = AppOf(element);
+        // An app that is left alone is not read at all: the check comes before any text is fetched.
+        if (app is not null && exclusions.IsExcluded(app.Key)) { lastApp = app; Reset(); return; }
+        var focused = TextField.From(element);
         var value = focused?.ReadText();
         if (focused is null || string.IsNullOrEmpty(value) || value.Length > WritingEngine.MaxLength) { Reset(); return; }
+        if (app is not null) lastApp = app;
 
         var changed = field is null || !field.IsSameElement(focused) || value != text;
         // Always keep the newest reading: for a document it also knows what is on screen now, after scrolling.
@@ -137,6 +152,26 @@ internal sealed class SystemWritingAssistant : IDisposable
             ScheduleProofread(value);
         }
         Publish(suggestions);
+    }
+
+    /// <summary>Which app <paramref name="element"/> belongs to; null if that can't be told.</summary>
+    private AppInfo? AppOf(FlaUI.Core.AutomationElements.AutomationElement? element)
+    {
+        try
+        {
+            if (element is null) return null;
+            var pid = element.Properties.ProcessId.ValueOrDefault;
+            if (pid == 0 || pid == ownProcessId) return null;
+            if (apps.TryGetValue(pid, out var known)) return known;
+            if (apps.Count > 200) apps.Clear();
+            using var process = System.Diagnostics.Process.GetProcessById(pid);
+            var name = process.ProcessName;
+            // The friendly name ("Microsoft Word") can't be read for every app; the program name always can.
+            try { if (process.MainModule?.FileVersionInfo.FileDescription is { Length: > 0 } described) name = described; }
+            catch (Exception) { }
+            return apps[pid] = new AppInfo(process.ProcessName, name);
+        }
+        catch (Exception) { return null; }
     }
 
     /// <summary>Debounced on-device model pass; merges its findings behind the instant spelling and style results.</summary>

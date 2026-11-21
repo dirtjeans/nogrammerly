@@ -14,6 +14,7 @@ internal sealed class TrayApp : ApplicationContext
     private readonly SynchronizationContext ui = SynchronizationContext.Current!;
     private static readonly string DataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Nogrammerly");
     private readonly IgnoreList ignored = new(Path.Combine(DataFolder, "ignored.json"));
+    private readonly AppExclusions exclusions = new(Path.Combine(DataFolder, "apps.json"));
     private readonly SystemWritingAssistant assistant;
     private readonly NotifyIcon tray = new();
     private readonly UnderlineOverlay overlay = new();
@@ -26,7 +27,7 @@ internal sealed class TrayApp : ApplicationContext
 
     public TrayApp(bool firstRun)
     {
-        assistant = new SystemWritingAssistant(ignored);
+        assistant = new SystemWritingAssistant(ignored, exclusions);
         fieldButton = new FieldButton(() => ShowMenu(BuildFieldMenu()), Path.Combine(DataFolder, "button.txt"));
         tray.Icon = Icon.ExtractAssociatedIcon(Environment.ProcessPath!) ?? SystemIcons.Application;
         tray.Text = "Nogrammerly";
@@ -44,6 +45,21 @@ internal sealed class TrayApp : ApplicationContext
 
         _ = AIWriter.PrewarmAsync();
         if (firstRun) Welcome();
+    }
+
+    /// <summary>Lets the user stop Nogrammerly reading an app, or start it again.</summary>
+    private void AddAppItems(ToolStripItemCollection items)
+    {
+        if (assistant.LastApp is { } app)
+        {
+            var on = !exclusions.IsExcluded(app.Key);
+            items.Add(new ToolStripMenuItem($"Check my writing in {app.Name}", null, (_, _) => exclusions.Set(app.Key, on)) { Checked = on });
+        }
+        var chosen = exclusions.ChosenByUser;
+        if (chosen.Count == 0) return;
+        var menu = new ToolStripMenuItem("Apps left alone");
+        foreach (var name in chosen) menu.DropDownItems.Add($"Check {name} again", null, (_, _) => exclusions.Set(name, false));
+        items.Add(menu);
     }
 
     private void Render(FieldState newState)
@@ -119,6 +135,7 @@ internal sealed class TrayApp : ApplicationContext
         }
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(assistant.IsRunning ? "Pause" : "Resume", null, (_, _) => { assistant.SetRunning(!assistant.IsRunning); Render(FieldState.None); });
+        AddAppItems(menu.Items);
         if (fieldButton.IsMoved) menu.Items.Add("Put the round button back in the corner", null, (_, _) => fieldButton.ResetPosition());
         menu.Items.Add("How to use…", null, (_, _) => Welcome());
         menu.Items.Add("Quit Nogrammerly", null, (_, _) => ExitThread());
