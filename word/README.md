@@ -13,11 +13,15 @@ Underlines in the document need Word for Microsoft 365. Without it, the side pan
 
 ## Set up
 
-1. Click the ✦ icon near the clock, then choose **Add-ins for other apps › Set up Word add-in…**.
-2. Confirm the certificate when Windows asks.
-3. Close Word if it is open, start it again, and choose **Nogrammerly** on the **Home** tab.
+1. Close Word if it is open.
+2. Click the ✦ icon near the clock, then choose **Add-ins for other apps › Set up Word add-in…**.
+3. Confirm the certificate when Windows asks.
 
-That is all. The Nogrammerly app serves the add-in's pages to Word itself, so nothing else needs to run.
+Word then opens with Nogrammerly loaded. From then on, **Nogrammerly** is on Word's **Home** tab. The Nogrammerly app serves the add-in's pages to Word itself, so nothing else needs to run.
+
+If the button ever goes missing, choose **Add-ins for other apps › Open Word with Nogrammerly**. You can also find it in Word under **Home › Add-ins › Developer Add-ins**.
+
+Install Nogrammerly with `Install.cmd` before you set up the add-in. The installer is what tells Word where the add-in lives.
 
 ### Why a certificate?
 

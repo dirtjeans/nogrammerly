@@ -49,7 +49,13 @@ internal sealed class TrayApp : ApplicationContext
 
         _ = AIWriter.PrewarmAsync();
         if (bridgeSettings.Enabled) StartBridge();
-        if (bridgeSettings.WordAddin) StartAddinHost(AddinSetup.FindCertificate());
+        if (bridgeSettings.WordAddin)
+        {
+            // Refresh Word's entry at each start, so an update to the add-in or a lost entry mends itself.
+            try { AddinSetup.RegisterWithWord(bridgeSettings.SitePort, WordManifest); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+            StartAddinHost(AddinSetup.FindCertificate());
+        }
         if (firstRun) Welcome();
     }
 
@@ -116,12 +122,23 @@ internal sealed class TrayApp : ApplicationContext
             // The add-in talks to the app over the bridge, so that goes on too.
             Apply(bridgeSettings with { Enabled = true, WordAddin = true });
             StartAddinHost(certificate);
-            MessageBox.Show("The Word add-in is set up.\n\nClose Word if it is open, then start it again and choose Nogrammerly on the Home tab.",
+            MessageBox.Show("The Word add-in is set up.\n\nClose Word if it is open. Then choose OK, and Word will open with Nogrammerly loaded. " +
+                "After that, Nogrammerly is on Word's Home tab.",
                 "Nogrammerly", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            OpenWordWithAddin();
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Security.SecurityException or System.Security.Cryptography.CryptographicException)
         {
             MessageBox.Show($"The Word add-in couldn't be set up: {e.Message}", "Nogrammerly", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+    }
+
+    private void OpenWordWithAddin()
+    {
+        try { AddinSetup.OpenInWord(WordManifest); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidDataException or System.ComponentModel.Win32Exception)
+        {
+            MessageBox.Show($"Word couldn't be opened with Nogrammerly: {e.Message}", "Nogrammerly", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
 
@@ -138,7 +155,12 @@ internal sealed class TrayApp : ApplicationContext
     private void AddBridgeItems(ToolStripItemCollection items)
     {
         var menu = new ToolStripMenuItem("Add-ins for other apps");
-        if (bridgeSettings.WordAddin) menu.DropDownItems.Add("Remove Word add-in", null, (_, _) => RemoveWordAddin());
+        if (bridgeSettings.WordAddin)
+        {
+            // Also the way back if Word ever stops showing the button.
+            menu.DropDownItems.Add("Open Word with Nogrammerly", null, (_, _) => OpenWordWithAddin());
+            menu.DropDownItems.Add("Remove Word add-in", null, (_, _) => RemoveWordAddin());
+        }
         else menu.DropDownItems.Add("Set up Word add-in…", null, (_, _) => SetUpWordAddin());
         menu.DropDownItems.Add(new ToolStripSeparator());
         menu.DropDownItems.Add(new ToolStripMenuItem("Let add-ins on this PC use Nogrammerly", null, (_, _) => SetBridgeEnabled(bridge is null)) { Checked = bridge is not null });

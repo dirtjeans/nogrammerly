@@ -100,23 +100,42 @@ internal static class AddinSetup
         }
     }
 
-    // Word. Listing a manifest here is how Word is told about an add-in that doesn't come from its store.
+    // Word. Word learns about an add-in that isn't from its store through a registry entry naming the add-in's
+    // manifest file. The installer writes that entry, pointing at a file that doesn't exist yet, because an app
+    // installed as a package can't: Windows keeps a package's registry writes in a private copy Word never reads.
+    // Files are not affected, so creating the manifest file is what switches the add-in on, and deleting it, off.
 
-    /// <summary>Writes the manifest for this PC's address and tells Word about it.</summary>
+    /// <summary>Writes the manifest for this PC's address, which makes the add-in appear in Word.</summary>
     public static void RegisterWithWord(int port, string manifestPath)
     {
         var template = File.ReadAllText(Path.Combine(SiteRoot, "manifest.xml"));
         Directory.CreateDirectory(Path.GetDirectoryName(manifestPath)!);
         File.WriteAllText(manifestPath, AddinSite.ManifestFor(template, AddinSite.Origin(port)));
-        using var key = Registry.CurrentUser.CreateSubKey(WordKey);
-        key.SetValue(AddinSite.ManifestId, manifestPath);
+        // Covers a copy that was not installed as a package, or was installed by an older installer.
+        try
+        {
+            using var key = Registry.CurrentUser.CreateSubKey(WordKey);
+            if (key.GetValue(AddinSite.ManifestId) is not string existing || !File.Exists(existing)) key.SetValue(AddinSite.ManifestId, manifestPath);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Security.SecurityException) { }
+    }
+
+    /// <summary>
+    /// Opens Word with the add-in loaded. Word shows a registered add-in's button only after it has been added
+    /// once; opening a document that refers to the add-in does that, so the user needn't hunt through Word's menus.
+    /// </summary>
+    public static void OpenInWord(string manifestPath)
+    {
+        var document = Path.Combine(Path.GetDirectoryName(manifestPath)!, "Nogrammerly for Word.docx");
+        File.WriteAllBytes(document, StarterDocument.Build(File.ReadAllText(manifestPath),
+            "Nogrammerly is ready. Its pane is on the right, and its button is on the Home tab. You can close this document without saving it."));
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(document) { UseShellExecute = true })?.Dispose();
     }
 
     public static void RemoveFromWord(string manifestPath)
     {
-        using var key = Registry.CurrentUser.OpenSubKey(WordKey, writable: true);
-        // Leave the entry alone if it points somewhere else, such as a developer's own copy.
-        if (key?.GetValue(AddinSite.ManifestId) as string == manifestPath) key.DeleteValue(AddinSite.ManifestId, throwOnMissingValue: false);
+        try { File.Delete(Path.Combine(Path.GetDirectoryName(manifestPath)!, "Nogrammerly for Word.docx")); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
         try { File.Delete(manifestPath); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
     }
